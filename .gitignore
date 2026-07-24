@@ -1,0 +1,22 @@
+# dependencies
+/node_modules
+
+# env files — nunca commitar
+.env
+.env.local
+.env.*.local
+
+# credenciais — nunca commitar
+*service-account*.json
+*credentials*.json
+checkin-v4-carvalho*.json
+
+# vercel
+.vercel
+
+# misc
+.DS_Store
+
+# referências de outros clientes (não fazem parte do entregável do Josapar)
+Klubi Dashboard - Standalone (2).html
+dashboard-positive-co.html

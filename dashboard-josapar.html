@@ -1,0 +1,1755 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Josapar — Dashboard de Performance</title>
+<link rel="icon" type="image/png" href="logo-josapar.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://unpkg.com/lucide@0.462.0/dist/umd/lucide.js"></script>
+<style>
+  :root{
+    --bg:#121212;
+    --sidebar-bg:#161616;
+    --card-bg:#1B1B1B;
+    --card-bg-alt:#202020;
+    --border:rgba(255,255,255,0.06);
+    --border-strong:rgba(255,255,255,0.1);
+    --text-primary:#FFFFFF;
+    --text-secondary:#8A8A8A;
+    --text-tertiary:#5A5A5A;
+    --success:#3DDC84;
+    --success-soft:rgba(61,220,132,0.12);
+    --danger:#F1543F;
+    --danger-soft:rgba(241,84,63,0.12);
+    --radius:12px;
+    --radius-sm:8px;
+    --font:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+    /* overlays neutros (hover, badges, texturas) — invertidos no tema claro */
+    --overlay-1:rgba(255,255,255,0.03);
+    --overlay-2:rgba(255,255,255,0.05);
+    --overlay-3:rgba(255,255,255,0.08);
+    --overlay-4:rgba(255,255,255,0.12);
+    --chart-grid:rgba(255,255,255,0.05);
+    --chart-muted-1:rgba(255,255,255,0.25);
+    --chart-muted-2:rgba(255,255,255,0.14);
+    --chart-line-muted:rgba(255,255,255,0.35);
+    --shadow-color:rgba(0,0,0,0.4);
+    --shadow-color-strong:rgba(0,0,0,0.5);
+    --skeleton-sweep:rgba(255,255,255,0.14);
+  }
+  :root[data-theme="light"]{
+    --bg:#F2F2F4;
+    --sidebar-bg:#FFFFFF;
+    --card-bg:#FFFFFF;
+    --card-bg-alt:#F5F5F6;
+    --border:rgba(0,0,0,0.09);
+    --border-strong:rgba(0,0,0,0.16);
+    --text-primary:#18181A;
+    --text-secondary:#5F6368;
+    --text-tertiary:#8A8F96;
+    --success-soft:rgba(61,220,132,0.16);
+    --danger-soft:rgba(241,84,63,0.12);
+    --overlay-1:rgba(0,0,0,0.035);
+    --overlay-2:rgba(0,0,0,0.05);
+    --overlay-3:rgba(0,0,0,0.07);
+    --overlay-4:rgba(0,0,0,0.14);
+    --chart-grid:rgba(0,0,0,0.08);
+    --chart-muted-1:rgba(0,0,0,0.18);
+    --chart-muted-2:rgba(0,0,0,0.1);
+    --chart-line-muted:rgba(0,0,0,0.3);
+    --shadow-color:rgba(0,0,0,0.1);
+    --shadow-color-strong:rgba(0,0,0,0.16);
+    --skeleton-sweep:rgba(255,255,255,0.85);
+  }
+
+  /* ===== Paleta por marca — accent = uso sólido (fundo com texto branco, chart line);
+     accent-text = variante clareada, único uso permitido como texto/ícone sobre fundo escuro (AA 4.5:1+) ===== */
+  [data-brand="josapar"]   { --accent:#8B2323; --accent-text:#D75151; --accent-soft:rgba(139,35,35,0.14); }
+  [data-brand="tiojoao"]   { --accent:#D6190D; --accent-text:#F6190B; --accent-soft:rgba(214,25,13,0.14); }
+  [data-brand="suprasoy"]  { --accent:#6E558E; --accent-text:#8D73AD; --accent-soft:rgba(110,85,142,0.14); }
+  [data-brand="novaoliva"] { --accent:#3F7D45; --accent-text:#448C4B; --accent-soft:rgba(63,125,69,0.14); }
+  [data-brand="meubiju"]   { --accent:#941B0F; --accent-text:#EE3320; --accent-soft:rgba(148,27,15,0.14); }
+  [data-brand="armazem"]   { --accent:#D6190D; --accent-text:#F6190B; --accent-soft:rgba(214,25,13,0.14); }
+
+  *{ margin:0; padding:0; box-sizing:border-box; }
+  html,body{ height:100%; }
+  body{
+    font-family:var(--font);
+    background:var(--bg);
+    color:var(--text-primary);
+    -webkit-font-smoothing:antialiased;
+    overflow:hidden;
+  }
+  button{ font-family:inherit; cursor:pointer; }
+  ::-webkit-scrollbar{ width:8px; height:8px; }
+  ::-webkit-scrollbar-thumb{ background:var(--overlay-4); border-radius:8px; }
+  ::-webkit-scrollbar-track{ background:transparent; }
+  a{ color:inherit; text-decoration:none; }
+  :focus-visible{ outline:2px solid var(--accent-text,#6EA8FE); outline-offset:2px; }
+
+  /* ===================== SHELL ===================== */
+  #app{ display:flex; height:100vh; }
+
+  .sidebar{
+    width:250px; min-width:250px; background:var(--sidebar-bg);
+    border-right:1px solid var(--border);
+    display:flex; flex-direction:column; height:100vh;
+  }
+  .s-logo{ padding:18px 18px 16px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:11px; }
+  .s-logo-chip{
+    width:46px; height:46px; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center; overflow:hidden;
+  }
+  .s-logo-chip img{ width:100%; height:100%; object-fit:contain; filter:drop-shadow(0 1px 3px rgba(0,0,0,0.5)); }
+  .s-logo-word{ font-size:14px; font-weight:800; letter-spacing:-0.3px; line-height:1.25; }
+  .s-logo-tag{ font-size:10px; color:var(--text-tertiary); margin-top:2px; }
+
+  .nav-scroll{ flex:1; overflow-y:auto; padding:14px 10px; }
+  .nav-section-label{ font-size:9.5px; font-weight:700; letter-spacing:.8px; text-transform:uppercase; color:var(--text-tertiary); padding:4px 12px 8px; }
+  .nav-item{
+    display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:9px;
+    color:var(--text-secondary); font-size:13px; font-weight:500;
+    background:transparent; border:none; width:100%; text-align:left;
+    transition:background 120ms ease, color 120ms ease; margin-bottom:2px;
+  }
+  .nav-item svg{ width:16px; height:16px; flex-shrink:0; stroke-width:1.8; }
+  .nav-item:hover{ background:var(--overlay-2); color:var(--text-primary); }
+  .nav-item.active{ background:var(--accent-soft); color:var(--accent-text); }
+  .nav-item .nav-badge{
+    margin-left:auto; font-size:9px; font-weight:700; letter-spacing:.3px;
+    background:var(--overlay-3); color:var(--text-tertiary);
+    padding:2px 6px; border-radius:100px; text-transform:uppercase;
+  }
+  .sidebar-footer{ padding:14px 18px; border-top:1px solid var(--border); }
+  .sidebar-footer-text{ font-size:10px; color:var(--text-tertiary); line-height:1.5; }
+
+  .main{ flex:1; display:flex; flex-direction:column; min-width:0; height:100vh; }
+
+  /* ===================== TOPBAR — TÍTULO + TROCA DE MARCA ===================== */
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between; gap:16px;
+    padding:16px 26px; border-bottom:1px solid var(--border); flex-shrink:0; flex-wrap:wrap; row-gap:10px;
+  }
+  .topbar-title h1{ font-size:17px; font-weight:600; letter-spacing:-0.3px; }
+  .topbar-title p{ font-size:11.5px; color:var(--text-tertiary); margin-top:3px; }
+  .topbar-actions{ display:flex; align-items:center; gap:10px; }
+  .theme-toggle{
+    width:38px; height:38px; border-radius:10px; background:var(--card-bg); border:1px solid var(--border);
+    display:flex; align-items:center; justify-content:center; color:var(--text-secondary); flex-shrink:0;
+    transition:color 140ms ease, border-color 140ms ease;
+  }
+  .theme-toggle:hover{ color:var(--text-primary); border-color:var(--border-strong); }
+  .theme-toggle svg{ width:16px; height:16px; stroke-width:1.8; }
+  .theme-toggle .theme-icon-light, .theme-toggle .theme-icon-dark{ display:flex; align-items:center; justify-content:center; }
+  .theme-toggle .theme-icon-dark{ display:none; }
+  :root[data-theme="light"] .theme-toggle .theme-icon-light{ display:none; }
+  :root[data-theme="light"] .theme-toggle .theme-icon-dark{ display:flex; }
+  /* ===== Dock de marcas — troca por logo, com ampliação ao passar o mouse ===== */
+  .brand-dock{
+    display:flex; align-items:flex-end; gap:8px; background:var(--card-bg); border:1px solid var(--border);
+    padding:8px 10px 6px; border-radius:20px; position:relative;
+  }
+  .dock-icon{
+    position:relative; width:42px; height:42px; border-radius:12px; background:transparent; border:none;
+    display:flex; align-items:center; justify-content:center; padding:4px; flex-shrink:0;
+    cursor:pointer;
+    transform-origin:bottom center; will-change:transform;
+    transition:transform 140ms ease, background 140ms ease, outline-color 140ms ease;
+    outline:2px solid transparent; outline-offset:3px;
+  }
+  .dock-icon img{ width:100%; height:100%; object-fit:contain; pointer-events:none; filter:drop-shadow(0 1px 3px rgba(0,0,0,0.55)); }
+  .dock-icon:hover{ background:var(--overlay-2); }
+  .dock-icon.active{ outline-color:var(--pc); background:var(--overlay-2); }
+  .dock-icon .dock-label{
+    position:absolute; top:calc(100% + 10px); left:50%; transform:translateX(-50%) translateY(-4px);
+    background:#0D0D0D; color:#fff; font-size:10.5px; font-weight:600; padding:5px 9px; border-radius:7px;
+    white-space:nowrap; opacity:0; pointer-events:none; transition:opacity 120ms ease, transform 120ms ease;
+    border:1px solid var(--border-strong); z-index:5;
+  }
+  .dock-icon:hover .dock-label{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+  /* ===================== FILTER BAR ===================== */
+  .filterbar{
+    display:flex; align-items:center; gap:20px; padding:12px 26px; border-bottom:1px solid var(--border);
+    flex-wrap:wrap; row-gap:10px; flex-shrink:0;
+  }
+  .filter-group{ display:flex; align-items:center; gap:8px; }
+  .filter-group-label{ font-size:10.5px; font-weight:600; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:.4px; margin-right:2px; }
+  .pillrow{ display:flex; gap:3px; background:var(--card-bg); border:1px solid var(--border); border-radius:9px; padding:3px; }
+  .pp{ padding:5px 11px; border-radius:6px; font-size:11.5px; font-weight:600; color:var(--text-secondary); background:transparent; border:none; transition:all 140ms ease; }
+  .pp:hover{ color:var(--text-primary); background:var(--overlay-2); }
+  .pp.active{ background:var(--accent-soft); color:var(--accent-text); }
+  .filter-group{ position:relative; }
+  .custom-range-pop{
+    display:none; position:absolute; top:calc(100% + 8px); left:0; z-index:20;
+    background:var(--card-bg); border:1px solid var(--border-strong); border-radius:var(--radius);
+    padding:14px; box-shadow:0 12px 28px var(--shadow-color-strong); gap:10px; flex-direction:column; min-width:230px;
+  }
+  .custom-range-pop.open{ display:flex; }
+  .custom-range-pop label{ font-size:10.5px; font-weight:600; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:.4px; display:block; margin-bottom:4px; }
+  .custom-range-pop input[type="date"]{
+    width:100%; background:var(--bg); border:1px solid var(--border); border-radius:7px; color:var(--text-primary);
+    font-size:12px; padding:7px 8px; font-family:inherit;
+  }
+  .custom-range-pop-row{ display:flex; gap:8px; }
+  .custom-range-pop-row > div{ flex:1; }
+  .custom-range-apply{
+    margin-top:2px; background:var(--accent-text); color:#0D0D0D; border:none; border-radius:7px;
+    padding:7px 10px; font-size:11.5px; font-weight:700; cursor:pointer;
+  }
+  .custom-range-error{ font-size:10.5px; color:var(--danger); display:none; }
+  .filterbar-spacer{ flex:1; }
+  .compare-pill{
+    display:flex; align-items:center; gap:6px; font-size:11.5px; font-weight:500;
+    color:var(--text-secondary); background:var(--card-bg); border:1px solid var(--border);
+    padding:7px 12px; border-radius:8px; white-space:nowrap;
+  }
+  .compare-pill svg{ width:13px; height:13px; }
+
+  .content{ flex:1; overflow-y:auto; padding:24px 28px 44px; }
+  .section{ display:none; flex-direction:column; gap:34px; }
+  .section.active{ display:flex; }
+
+  .section-heading{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .section-heading h2{ font-size:15px; font-weight:600; letter-spacing:-0.2px; }
+  .section-heading p{ font-size:11.5px; color:var(--text-tertiary); margin-top:2px; }
+  .subsection-label{ font-size:10.5px; font-weight:700; letter-spacing:.6px; text-transform:uppercase; color:var(--text-tertiary); }
+
+  /* KPI cards */
+  .kpi-grid{ display:grid; grid-template-columns:repeat(6,1fr); gap:14px; }
+  @media (max-width:1400px){ .kpi-grid{ grid-template-columns:repeat(3,1fr); } }
+  @media (max-width:640px){ .kpi-grid{ grid-template-columns:repeat(2,1fr); } }
+  .kpi-card{
+    background:var(--card-bg); border:1px solid var(--border); border-radius:var(--radius);
+    padding:16px 16px 14px; display:flex; flex-direction:column; gap:10px; min-width:0;
+    transition:border-color 160ms ease, transform 160ms ease, background 160ms ease;
+  }
+  .kpi-card:hover{ border-color:var(--border-strong); transform:translateY(-1px); }
+  .kpi-card.trend-up:hover{ border-color:rgba(61,220,132,0.4); background:var(--success-soft); }
+  .kpi-card.trend-down:hover{ border-color:rgba(241,84,63,0.4); background:var(--danger-soft); }
+  .kpi-top{ display:flex; align-items:flex-start; justify-content:space-between; gap:6px; }
+  .kpi-label-wrap{ min-width:0; }
+  .kpi-label{ font-size:11px; font-weight:500; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; }
+  .kpi-source{ font-size:9px; font-weight:600; color:var(--text-tertiary); background:var(--overlay-2); border:1px solid var(--border); padding:1px 6px; border-radius:5px; margin-top:4px; display:inline-block; }
+  @keyframes kpiShimmer{ 0%{ background-position:200% 0, 0 0; } 100%{ background-position:-200% 0, 0 0; } }
+  /* skeleton: some o dado antigo/mock por trás e mostra só um bloco "sombra" animado — nunca deixa
+     número desatualizado visível enquanto busca dado real (troca de marca, plataforma ou período) */
+  .kpi-card.is-loading [data-role="value"]{
+    color:transparent; border-radius:4px; background-clip:padding-box;
+    background-image:linear-gradient(90deg, transparent, var(--skeleton-sweep), transparent), linear-gradient(var(--overlay-3), var(--overlay-3));
+    background-size:200% 100%, 100% 100%; background-repeat:no-repeat; animation:kpiShimmer 1.2s linear infinite;
+  }
+  .kpi-card.is-loading [data-role="delta"], .kpi-card.is-loading [data-role="source"]{ visibility:hidden; }
+  .chart-box.is-loading, .city-list.is-loading, .table-wrap.is-loading, .br-map-wrap.is-loading{ position:relative; }
+  .chart-box.is-loading canvas, .city-list.is-loading #city-rows, .table-wrap.is-loading table, .br-map-wrap.is-loading svg{ visibility:hidden; }
+  .chart-box.is-loading::after, .city-list.is-loading::after, .table-wrap.is-loading::after, .br-map-wrap.is-loading::after{
+    content:''; position:absolute; inset:0; border-radius:var(--radius); pointer-events:none;
+    background-image:linear-gradient(90deg, transparent, var(--skeleton-sweep), transparent), linear-gradient(var(--overlay-3), var(--overlay-3));
+    background-size:200% 100%, 100% 100%; background-repeat:no-repeat; animation:kpiShimmer 1.2s linear infinite;
+  }
+  .keywords-empty-note{ display:none; position:absolute; inset:0; align-items:center; justify-content:center; text-align:center; padding:0 24px; color:var(--text-tertiary); font-size:12px; }
+  .keywords-empty-note.show{ display:flex; }
+  .kpi-icon{
+    width:26px; height:26px; border-radius:7px; background:var(--accent-soft);
+    display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  }
+  .kpi-icon svg{ width:13px; height:13px; color:var(--accent-text); stroke-width:2; }
+  .kpi-value{ font-size:21px; font-weight:700; letter-spacing:-0.5px; }
+  .kpi-delta{ display:flex; align-items:center; gap:4px; font-size:11.5px; font-weight:600; }
+  .kpi-delta svg{ width:12px; height:12px; }
+  .kpi-delta.up{ color:var(--success); }
+  .kpi-delta.down{ color:var(--danger); }
+  .kpi-delta-label{ color:var(--text-tertiary); font-weight:400; margin-left:2px; }
+
+  /* Panels / charts */
+  .panel-row{ display:grid; grid-template-columns:1.4fr 1fr; gap:16px; }
+  @media (max-width:1100px){ .panel-row{ grid-template-columns:1fr; } }
+  .panel-row-3{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; }
+  @media (max-width:1100px){ .panel-row-3{ grid-template-columns:1fr; } }
+  .panel{
+    background:var(--card-bg); border:1px solid var(--border); border-radius:var(--radius);
+    padding:18px 20px 20px; min-width:0;
+  }
+  .panel-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; gap:10px; }
+  .panel-head h3{ font-size:12.5px; font-weight:600; color:var(--text-primary); }
+  .panel-head span{ font-size:10.5px; color:var(--text-tertiary); white-space:nowrap; }
+  .chart-box{ position:relative; height:220px; }
+  .chart-box.tall{ height:260px; }
+  .legend-row{ display:flex; align-items:center; gap:16px; margin-top:10px; }
+  .legend-item{ display:flex; align-items:center; gap:6px; font-size:10.5px; color:var(--text-secondary); }
+  .legend-dot{ width:8px; height:8px; border-radius:2px; }
+
+  /* Tables */
+  .table-wrap{ overflow-x:auto; }
+  table{ width:100%; border-collapse:collapse; font-size:12.5px; min-width:640px; }
+  thead th{
+    text-align:left; font-size:10px; font-weight:600; letter-spacing:.5px; text-transform:uppercase;
+    color:var(--text-tertiary); padding:0 14px 10px; border-bottom:1px solid var(--border);
+    white-space:nowrap;
+  }
+  tbody td{ padding:12px 14px; border-bottom:1px solid var(--border); color:var(--text-primary); white-space:nowrap; }
+  tbody tr:last-child td{ border-bottom:none; }
+  tbody tr{ transition:background 120ms ease; }
+  tbody tr:hover{ background:var(--overlay-1); }
+  .rank-pill{
+    display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px;
+    border-radius:6px; font-size:11px; font-weight:700; background:var(--overlay-2); color:var(--text-secondary);
+  }
+  .rank-pill.top{ background:var(--accent); color:#fff; }
+  .platform-tag{
+    font-size:10.5px; font-weight:600; padding:3px 8px; border-radius:100px;
+    background:var(--overlay-2); color:var(--text-secondary);
+  }
+  .roas-good{ color:var(--success); font-weight:700; }
+  .roas-bad{ color:var(--danger); font-weight:700; }
+
+  /* Creatives */
+  .creative-grid{ display:grid; grid-template-columns:repeat(5,1fr); gap:12px; position:relative; min-height:120px; }
+  @media (max-width:1300px){ .creative-grid{ grid-template-columns:repeat(3,1fr); } }
+  @media (max-width:700px){ .creative-grid{ grid-template-columns:repeat(2,1fr); } }
+  .creative-grid.is-loading > .creative-card{ visibility:hidden; }
+  .creative-grid.is-loading::after{
+    content:''; position:absolute; inset:0; border-radius:var(--radius); pointer-events:none;
+    background-image:linear-gradient(90deg, transparent, var(--skeleton-sweep), transparent), linear-gradient(var(--overlay-3), var(--overlay-3));
+    background-size:200% 100%, 100% 100%; background-repeat:no-repeat; animation:kpiShimmer 1.2s linear infinite;
+  }
+  .creative-card{
+    background:var(--card-bg); border:1px solid var(--border); border-radius:var(--radius);
+    overflow:hidden; display:flex; flex-direction:column; transition:border-color 160ms ease;
+  }
+  .creative-card:hover{ border-color:var(--border-strong); }
+  .creative-thumb{
+    aspect-ratio:4/5; background:
+      repeating-linear-gradient(135deg, var(--overlay-1) 0 10px, transparent 10px 20px),
+      var(--card-bg-alt);
+    display:flex; align-items:center; justify-content:center; position:relative;
+  }
+  .creative-thumb .rank-pill{ position:absolute; top:8px; left:8px; }
+  .creative-thumb svg{ width:26px; height:26px; color:var(--text-tertiary); }
+  .creative-thumb-label{
+    position:absolute; bottom:8px; left:8px; right:8px; font-size:9px; color:var(--text-tertiary);
+    text-align:center; line-height:1.3;
+  }
+  .creative-shimmer{
+    position:absolute; inset:0; z-index:0;
+    background-image:linear-gradient(90deg, transparent, var(--skeleton-sweep), transparent), linear-gradient(var(--overlay-3), var(--overlay-3));
+    background-size:200% 100%, 100% 100%; background-repeat:no-repeat; animation:kpiShimmer 1.2s linear infinite;
+  }
+  .creative-img{ position:relative; z-index:1; width:100%; height:100%; object-fit:cover; opacity:0; transition:opacity 200ms ease; }
+  .creative-img.loaded{ opacity:1; }
+  .creative-thumb-fallback{
+    display:none; position:absolute; inset:0; z-index:1; flex-direction:column; align-items:center; justify-content:center; gap:6px;
+  }
+  .creative-info{ padding:10px 12px 12px; display:flex; flex-direction:column; gap:6px; }
+  .creative-name{ font-size:11.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .creative-metric{ font-size:11px; color:var(--accent-text); font-weight:700; }
+  .creative-block-title{ font-size:12.5px; font-weight:600; margin-bottom:12px; display:flex; align-items:center; gap:8px; color:var(--text-primary); }
+  .creative-block-title svg{ width:14px; height:14px; color:var(--accent-text); }
+  .creative-block{ margin-bottom:0; }
+
+  /* Regional — mapa real por estado */
+  .map-panel-body{ display:flex; gap:18px; align-items:flex-start; }
+  .br-map-wrap{ position:relative; flex:1.2; min-width:0; }
+  .br-map{ width:100%; height:auto; max-height:400px; display:block; }
+  .br-state{ stroke:var(--bg); stroke-width:0.6; cursor:pointer; transition:opacity 120ms ease, stroke-width 120ms ease; }
+  .br-state:hover{ opacity:0.82; stroke:#fff; stroke-width:1.2; }
+  .map-tooltip{
+    position:absolute; pointer-events:none; background:#0D0D0D; border:1px solid var(--border-strong);
+    border-radius:9px; padding:10px 13px; font-size:11.5px; min-width:150px; z-index:20;
+    box-shadow:0 8px 24px var(--shadow-color-strong); display:none;
+  }
+  .map-tooltip .mt-name{ font-weight:700; font-size:12.5px; margin-bottom:5px; }
+  .map-tooltip .mt-row{ display:flex; justify-content:space-between; gap:14px; font-size:11px; color:var(--text-secondary); }
+  .map-tooltip .mt-row b{ color:var(--text-primary); font-weight:600; }
+  .map-legend{ display:flex; flex-direction:column; gap:10px; margin-top:14px; }
+  .map-legend-row{ display:flex; align-items:center; gap:8px; font-size:10.5px; color:var(--text-secondary); }
+  .map-legend-swatch{ width:26px; height:8px; border-radius:3px; flex-shrink:0; }
+
+  .city-list{ flex:1; display:flex; flex-direction:column; gap:8px; min-width:220px; }
+  .city-row{ display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); }
+  .city-row:last-child{ border-bottom:none; }
+  .city-info{ flex:1; min-width:0; }
+  .city-name{ font-size:12px; font-weight:600; }
+  .city-uf{ font-size:10px; color:var(--text-tertiary); }
+  .city-bar-bg{ height:5px; background:var(--overlay-2); border-radius:100px; margin-top:5px; overflow:hidden; }
+  .city-bar-fill{ height:100%; background:var(--accent-text); border-radius:100px; }
+  .city-metric{ font-size:11.5px; font-weight:700; text-align:right; white-space:nowrap; }
+  .city-metric small{ display:block; font-size:9.5px; font-weight:500; color:var(--text-tertiary); }
+
+  .region-block{ position:relative; }
+
+  /* Empty states */
+  .empty-state{
+    display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center;
+    padding:56px 24px; background:var(--card-bg); border:1px dashed var(--border-strong); border-radius:var(--radius);
+    gap:14px;
+  }
+  .empty-icon{
+    width:52px; height:52px; border-radius:14px; background:var(--accent-soft);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .empty-icon svg{ width:24px; height:24px; color:var(--accent-text); }
+  .empty-state h3{ font-size:14.5px; font-weight:600; }
+  .empty-state p{ font-size:12px; color:var(--text-secondary); max-width:380px; line-height:1.6; }
+  .empty-state .empty-eta{
+    font-size:11px; font-weight:600; color:var(--accent-text); background:var(--accent-soft);
+    padding:5px 12px; border-radius:100px; margin-top:4px;
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ transition:none !important; animation:none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <aside class="sidebar">
+    <div class="s-logo">
+      <div class="s-logo-chip" id="sidebar-logo-chip"><img id="sidebar-logo-img" src="" alt=""></div>
+      <div><div class="s-logo-word" id="sidebar-brand-name">Tio João</div>
+      <div class="s-logo-tag">Josapar · Central de Performance</div></div>
+    </div>
+    <nav class="nav-scroll" id="nav-scroll"></nav>
+    <div class="sidebar-footer">
+      <div class="sidebar-footer-text">Fonte única de dados do relatório mensal.<br>Dados de exemplo — aguardando integração das contas.</div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="topbar-title">
+        <h1 id="section-title">Performance de Mídia</h1>
+        <p id="section-sub">Investimento, alcance e conversão consolidados</p>
+      </div>
+      <div class="topbar-actions">
+        <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="Alternar tema claro/escuro" aria-label="Alternar tema claro/escuro">
+          <span class="theme-icon-light"><i data-lucide="sun"></i></span>
+          <span class="theme-icon-dark"><i data-lucide="moon"></i></span>
+        </button>
+        <div class="brand-dock" id="brand-dock"></div>
+      </div>
+    </header>
+
+    <div class="filterbar">
+      <div class="filter-group" id="period-filter-group">
+        <span class="filter-group-label">Período</span>
+        <div class="pillrow" id="period-pills"></div>
+        <div class="custom-range-pop" id="custom-range-pop">
+          <div class="custom-range-pop-row">
+            <div><label>De</label><input type="date" id="custom-date-from"></div>
+            <div><label>Até</label><input type="date" id="custom-date-to"></div>
+          </div>
+          <span class="custom-range-error" id="custom-range-error">A data final precisa ser maior que a inicial e não pode ser no futuro.</span>
+          <button class="custom-range-apply" onclick="applyCustomRange()">Aplicar</button>
+        </div>
+      </div>
+      <div class="filter-group" id="platform-filter-group">
+        <span class="filter-group-label">Plataforma</span>
+        <div class="pillrow" id="platform-pills"></div>
+      </div>
+      <div class="filterbar-spacer"></div>
+      <div class="compare-pill">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18M7 15l4-4 3 3 5-6"/></svg>
+        <span>Mês atual vs. anterior</span>
+      </div>
+    </div>
+
+    <div class="content" id="content"></div>
+  </div>
+</div>
+
+<script>
+/* ============================================================================
+   MAPA — GEOMETRIA REAL DOS 27 ESTADOS (projeção equiretangular simplificada)
+   Fonte: GeoJSON aberto de divisões estaduais do Brasil (click_that_hood /
+   IBGE), reprojetado e simplificado (Douglas-Peucker) para uso em widget.
+   ============================================================================ */
+var BR_VIEWBOX = "0 0 500 480";
+var BR_STATES = {
+  AC:{name:"Acre",region:"norte",cx:37.6,cy:180.6,d:"M10.5,155.6 L21.6,160.7 L48.5,166.9 L92.4,188.4 L87.4,192.4 L83.2,193.6 L79.7,197.6 L75.6,197.2 L73.5,200.6 L69.9,202.4 L59.6,200.3 L53.6,200.2 L49.2,202.0 L46.6,200.4 L45.5,201.1 L45.5,187.0 L47.0,182.3 L38.6,188.7 L27.2,189.1 L27.6,186.7 L25.2,183.1 L15.1,182.1 L18.4,177.0 L14.2,172.5 L14.3,170.9 L11.3,169.3 L8.6,164.0 L9.6,162.5 L6.0,159.8 L6.3,157.3 L9.4,156.8 L8.2,154.5 L10.5,155.6 Z"},
+  AL:{name:"Alagoas",region:"nordeste",cx:446.8,cy:180.2,d:"M457.9,175.1 L461.3,175.8 L461.3,176.9 L447.1,195.2 L440.0,188.9 L425.4,181.1 L431.0,175.4 L440.5,181.7 L441.5,180.4 L444.6,181.2 L449.0,179.2 L450.9,176.1 L457.9,175.1 Z"},
+  AM:{name:"Amazonas",region:"norte",cx:116.3,cy:101.8,d:"M84.2,44.9 L86.9,48.4 L87.0,55.2 L89.7,54.5 L96.0,60.2 L104.6,57.1 L105.1,61.4 L107.6,58.0 L109.3,58.1 L110.3,55.3 L113.7,53.4 L114.4,54.5 L118.5,50.9 L119.2,52.9 L122.1,49.8 L123.2,45.5 L130.6,42.7 L133.3,43.2 L134.7,45.0 L138.4,45.9 L137.2,50.1 L141.4,57.5 L140.4,63.1 L144.5,73.2 L143.3,77.0 L140.7,78.3 L146.2,82.6 L147.9,85.9 L152.8,88.1 L151.1,85.9 L151.5,80.4 L152.9,77.2 L155.8,75.2 L159.3,75.9 L162.3,79.9 L166.5,77.9 L165.4,75.3 L169.7,66.1 L183.1,66.1 L183.4,73.3 L189.8,82.9 L191.7,84.0 L193.4,82.5 L194.1,86.0 L200.7,89.9 L203.4,89.9 L204.9,92.1 L208.4,93.5 L209.1,95.7 L215.9,93.5 L211.6,98.3 L190.5,146.8 L188.0,149.6 L192.0,157.4 L189.1,163.2 L190.2,166.7 L188.9,174.5 L151.6,174.7 L150.0,173.4 L146.8,175.7 L136.7,165.0 L127.6,164.8 L125.9,169.0 L123.9,169.1 L124.1,172.1 L121.7,173.8 L121.4,176.7 L113.4,177.1 L110.3,182.3 L108.6,180.2 L106.2,180.9 L106.4,182.7 L104.5,182.1 L102.2,184.2 L100.1,182.1 L94.9,182.0 L93.9,184.7 L90.3,186.9 L48.5,166.9 L21.6,160.7 L8.2,154.5 L10.1,150.3 L16.0,147.1 L14.8,141.5 L18.1,137.0 L19.8,130.5 L30.7,123.4 L41.7,121.8 L45.2,118.7 L49.0,118.9 L50.5,121.6 L53.2,120.8 L59.9,82.8 L57.2,78.2 L57.3,75.3 L52.1,71.5 L52.3,62.5 L58.9,60.4 L60.3,61.9 L63.2,61.4 L61.4,56.4 L54.6,56.2 L54.7,48.6 L74.4,48.4 L73.1,47.3 L73.8,45.7 L77.0,47.3 L83.2,42.3 L84.2,44.9 Z"},
+  AP:{name:"Amapá",region:"norte",cx:259.2,cy:52.1,d:"M273.6,21.1 L279.2,43.6 L282.2,42.8 L284.6,47.6 L288.4,48.8 L288.7,54.9 L286.3,60.8 L282.6,61.7 L279.6,67.0 L273.2,70.6 L267.7,78.6 L267.4,82.0 L263.1,84.0 L259.0,81.8 L257.8,76.3 L256.5,76.2 L255.9,72.8 L253.0,70.9 L250.2,64.6 L251.0,61.0 L247.4,58.1 L247.2,54.3 L239.5,51.4 L236.9,48.3 L231.8,47.9 L230.2,40.1 L232.5,39.9 L235.4,42.7 L240.8,42.4 L243.2,40.7 L245.9,42.1 L248.3,41.0 L249.1,43.2 L252.9,43.2 L257.5,39.0 L260.1,31.2 L268.1,20.7 L269.3,16.1 L273.6,21.1 Z"},
+  BA:{name:"Bahia",region:"nordeste",cx:382.8,cy:216.8,d:"M413.1,171.9 L413.7,173.6 L418.8,174.7 L420.3,176.8 L421.7,175.0 L422.5,177.2 L424.7,177.4 L425.8,182.2 L428.2,183.1 L428.2,188.1 L430.2,189.2 L431.3,193.1 L429.9,194.3 L430.4,197.4 L425.7,197.6 L425.5,200.1 L430.4,207.3 L435.9,206.5 L427.6,220.7 L424.1,224.5 L421.0,224.3 L416.9,228.5 L417.8,232.8 L416.5,234.0 L417.3,236.4 L415.7,245.6 L418.2,259.4 L414.0,275.1 L414.9,281.3 L409.8,286.2 L408.6,289.3 L402.1,284.9 L402.1,281.9 L397.4,278.0 L399.0,271.7 L401.4,271.9 L401.5,268.0 L402.9,268.1 L406.4,262.5 L402.0,258.7 L398.1,258.7 L395.2,256.9 L389.1,258.0 L388.8,255.1 L383.6,250.3 L380.2,251.3 L367.5,244.9 L363.3,246.9 L359.2,244.9 L360.4,241.2 L355.3,239.9 L333.5,252.3 L334.8,248.7 L334.2,242.1 L335.4,241.4 L331.2,238.3 L332.5,232.2 L331.5,230.3 L333.9,228.5 L330.7,228.8 L330.6,226.3 L333.0,224.1 L330.8,224.5 L331.1,220.1 L332.6,218.9 L330.2,217.2 L329.7,213.6 L332.3,211.9 L330.0,211.6 L330.7,208.7 L333.4,208.8 L328.7,207.3 L327.1,204.6 L331.9,196.9 L336.4,194.4 L339.0,190.4 L343.2,199.0 L346.9,200.3 L351.0,196.7 L353.9,195.7 L356.2,196.8 L361.8,189.2 L359.6,183.7 L363.9,180.3 L366.3,182.2 L369.9,182.0 L372.3,184.5 L378.4,180.6 L383.2,180.1 L388.5,173.7 L391.7,173.6 L396.9,179.1 L395.6,182.6 L397.4,182.9 L400.8,181.4 L401.8,177.9 L405.2,177.7 L406.0,175.1 L408.6,174.6 L408.4,173.1 L413.1,171.9 Z"},
+  CE:{name:"Ceará",region:"nordeste",cx:406.4,cy:129.3,d:"M404.5,103.2 L422.7,113.7 L428.0,120.1 L437.0,127.2 L432.4,128.3 L426.3,140.5 L421.4,144.5 L421.0,150.6 L419.2,153.1 L421.9,156.7 L416.9,163.3 L415.4,163.5 L408.7,156.9 L398.3,157.9 L400.4,150.8 L396.2,149.0 L394.1,141.7 L393.9,131.4 L390.1,127.6 L391.9,119.2 L391.7,117.7 L390.0,117.6 L390.2,113.7 L388.0,109.6 L390.0,106.2 L389.2,104.2 L398.9,102.6 L404.5,103.2 Z"},
+  DF:{name:"Distrito Federal",region:"centrooeste",cx:315.1,cy:258.5,d:"M319.0,261.5 L307.6,261.7 L308.6,255.1 L317.7,255.1 L318.9,256.2 L319.0,261.5 Z"},
+  ES:{name:"Espírito Santo",region:"sudeste",cx:394.5,cy:305.7,d:"M396.2,319.2 L393.5,324.7 L384.6,322.6 L384.7,319.5 L382.7,318.2 L382.9,313.5 L384.1,311.6 L388.5,311.3 L391.0,305.1 L393.6,302.8 L392.8,296.8 L390.2,295.3 L394.0,294.9 L391.1,288.8 L392.4,287.1 L395.7,287.0 L394.4,284.7 L396.5,285.4 L398.6,283.8 L408.7,289.1 L408.4,300.8 L407.0,304.9 L403.1,308.5 L399.8,316.7 L396.2,319.2 Z"},
+  GO:{name:"Goiás",region:"centrooeste",cx:301.6,cy:252.8,d:"M285.6,218.1 L284.0,223.2 L294.8,228.4 L297.8,222.6 L299.5,224.6 L301.0,222.8 L303.8,225.8 L304.0,228.9 L304.9,226.7 L305.7,228.6 L308.9,226.9 L309.0,228.8 L313.0,228.9 L314.7,230.7 L315.2,226.4 L317.6,228.6 L325.6,224.8 L329.0,224.8 L329.5,223.0 L330.1,225.0 L333.0,224.1 L330.6,226.3 L331.1,229.3 L333.9,228.5 L331.5,230.3 L332.5,232.2 L331.2,238.3 L335.4,241.4 L334.2,242.1 L333.3,248.3 L331.0,248.2 L328.5,245.6 L328.5,249.7 L323.5,249.8 L324.5,253.0 L323.2,255.8 L324.8,259.7 L318.9,261.5 L318.9,256.2 L317.7,255.1 L308.6,255.1 L307.6,261.7 L319.1,261.8 L317.2,267.1 L321.1,272.9 L316.3,278.5 L319.5,280.4 L318.3,283.0 L319.3,285.8 L311.4,291.1 L307.8,289.1 L299.9,288.8 L294.7,292.8 L292.9,291.0 L283.8,293.5 L281.1,298.3 L277.8,300.6 L277.6,303.1 L258.7,293.4 L253.2,292.8 L252.7,291.6 L255.1,289.3 L251.1,288.8 L251.4,284.9 L249.3,279.5 L252.1,271.4 L256.6,267.5 L256.0,264.7 L261.0,259.8 L265.4,259.0 L269.4,249.9 L274.7,248.1 L277.7,238.2 L277.2,233.9 L280.3,228.8 L281.8,221.6 L285.6,218.1 Z"},
+  MA:{name:"Maranhão",region:"nordeste",cx:344.0,cy:103.6,d:"M322.3,177.0 L324.9,169.9 L328.0,169.0 L328.9,165.9 L327.3,163.9 L322.1,165.8 L315.7,158.4 L316.8,156.7 L313.9,155.6 L316.4,152.9 L318.2,144.4 L316.8,135.5 L312.2,132.3 L306.6,131.2 L302.0,133.4 L315.5,123.9 L321.6,115.5 L322.2,111.9 L327.6,103.3 L326.6,101.5 L329.5,99.5 L329.3,96.1 L331.1,95.0 L331.9,91.2 L330.6,90.4 L332.6,89.3 L332.6,83.9 L334.8,81.8 L335.0,84.1 L336.2,81.7 L336.0,84.6 L338.1,82.9 L337.7,86.0 L339.3,84.3 L340.0,86.1 L341.3,84.7 L340.9,87.7 L342.4,85.0 L341.9,90.0 L344.9,85.5 L345.2,87.4 L348.2,86.2 L347.3,88.6 L350.3,88.7 L348.3,91.0 L350.9,90.1 L350.3,91.5 L351.6,91.3 L350.8,92.0 L352.1,92.5 L354.0,99.2 L357.6,98.0 L356.6,98.8 L358.3,99.0 L358.0,100.1 L362.3,95.8 L363.8,97.7 L367.4,97.7 L375.7,101.7 L383.3,101.8 L383.7,104.8 L382.0,107.4 L378.9,110.4 L375.4,110.6 L369.7,120.0 L371.3,123.0 L370.1,126.7 L371.9,131.4 L368.4,136.8 L368.7,141.8 L371.6,145.2 L370.5,149.2 L364.6,151.3 L361.1,149.6 L357.4,150.3 L349.7,157.9 L340.7,161.2 L337.1,172.5 L334.4,176.3 L336.9,182.9 L335.0,192.2 L330.0,191.2 L326.8,185.9 L327.8,183.0 L325.4,182.1 L322.3,177.0 Z M346.4,85.3 L347.9,85.2 L346.4,85.3 Z M338.1,84.8 L338.9,82.6 L338.1,84.8 Z"},
+  MG:{name:"Minas Gerais",region:"sudeste",cx:344.6,cy:292.7,d:"M355.4,240.0 L360.4,241.2 L359.2,244.9 L363.3,246.9 L367.5,244.9 L380.2,251.3 L383.6,250.3 L388.8,255.1 L389.1,258.0 L396.4,257.1 L398.1,258.7 L402.0,258.7 L406.4,262.5 L402.9,268.1 L401.5,268.0 L401.4,271.9 L399.1,271.6 L398.1,273.8 L397.4,278.0 L402.1,281.9 L402.1,284.9 L398.6,283.8 L396.5,285.4 L394.4,284.7 L395.7,287.0 L392.4,287.1 L391.1,288.8 L394.0,294.9 L390.2,295.3 L392.8,296.8 L393.7,302.6 L391.0,305.1 L388.5,311.3 L384.1,311.6 L383.1,313.0 L383.5,316.8 L381.6,320.3 L379.5,320.8 L380.3,321.5 L377.0,328.5 L378.1,329.6 L368.7,334.2 L360.6,333.8 L341.5,340.9 L337.7,340.0 L336.8,343.4 L330.3,343.9 L330.4,342.2 L328.8,341.4 L329.6,339.5 L325.9,336.7 L327.3,334.7 L325.9,334.0 L327.2,333.2 L326.3,331.1 L328.4,326.7 L326.5,325.4 L322.5,326.1 L319.8,319.7 L321.5,316.8 L319.2,314.5 L319.6,311.1 L317.2,308.6 L312.5,309.0 L312.1,310.6 L308.1,309.4 L308.0,310.8 L301.2,311.0 L300.3,314.4 L299.3,311.1 L296.6,312.7 L296.2,308.7 L292.7,307.9 L288.7,308.4 L281.9,306.4 L275.7,310.1 L276.1,302.9 L277.7,302.9 L277.8,300.6 L281.1,298.3 L283.8,293.5 L292.9,291.0 L294.7,292.8 L299.9,288.8 L307.8,289.1 L311.4,291.1 L319.3,285.8 L318.3,283.0 L319.5,280.4 L316.3,277.8 L321.1,272.9 L317.2,267.1 L319.1,261.3 L324.8,259.7 L323.2,255.8 L324.5,253.0 L323.6,249.7 L328.5,249.7 L327.7,246.5 L328.8,245.6 L331.0,248.2 L334.3,247.9 L333.7,252.2 L351.2,241.2 L355.4,240.0 Z"},
+  MS:{name:"Mato Grosso do Sul",region:"centrooeste",cx:232.0,cy:308.7,d:"M242.0,284.2 L251.4,285.6 L251.4,289.2 L255.1,289.3 L252.7,291.6 L253.2,292.8 L257.7,293.0 L263.8,296.9 L275.0,301.0 L276.6,303.8 L275.2,305.8 L275.7,310.2 L268.8,316.7 L268.4,320.3 L265.4,322.7 L265.5,325.3 L263.1,327.2 L263.1,329.6 L259.2,334.8 L245.1,344.5 L243.7,348.9 L240.7,350.6 L239.0,356.8 L237.1,357.9 L232.6,354.8 L224.7,357.0 L222.5,352.6 L221.6,340.9 L218.8,336.5 L214.6,336.4 L212.4,334.0 L207.2,336.7 L193.7,334.1 L195.7,320.4 L194.4,319.8 L195.2,318.0 L193.8,317.5 L191.6,311.1 L195.2,308.7 L192.0,306.2 L197.2,297.2 L196.3,295.9 L198.8,288.0 L200.0,287.9 L196.0,279.8 L200.0,283.9 L204.8,281.9 L208.4,276.8 L211.8,277.1 L215.7,275.1 L227.3,280.9 L233.7,278.7 L237.0,281.0 L239.6,280.5 L243.9,275.8 L244.0,281.0 L241.8,282.1 L242.0,284.2 Z"},
+  MT:{name:"Mato Grosso",region:"centrooeste",cx:204.7,cy:233.2,d:"M165.9,228.7 L169.1,223.9 L169.3,220.5 L172.8,217.2 L168.8,211.2 L168.8,208.2 L171.1,205.9 L170.4,202.6 L166.0,202.4 L164.7,201.0 L151.9,201.0 L153.0,194.2 L151.4,191.0 L152.8,184.7 L151.0,180.3 L152.2,180.1 L152.9,176.2 L151.6,174.7 L188.7,174.7 L190.2,166.7 L189.1,163.2 L192.0,157.3 L197.8,167.7 L198.4,174.2 L203.1,176.3 L208.1,182.0 L284.8,187.2 L280.4,197.1 L278.8,206.4 L280.2,218.3 L279.1,220.4 L281.5,223.7 L277.2,233.9 L277.7,238.2 L274.7,248.1 L269.4,249.9 L265.4,259.0 L261.0,259.8 L256.0,264.7 L256.5,267.7 L252.1,271.4 L249.7,276.7 L249.3,281.4 L251.4,285.6 L241.1,284.2 L242.2,281.5 L244.0,281.0 L243.9,275.8 L239.5,280.5 L236.6,281.0 L233.7,278.7 L227.3,280.9 L215.7,275.1 L211.8,277.1 L208.4,276.8 L204.8,281.9 L200.0,283.9 L196.8,279.4 L193.1,279.0 L188.9,275.3 L188.1,269.5 L189.8,264.3 L168.1,264.3 L167.3,254.8 L163.5,250.4 L167.3,250.3 L166.9,244.6 L164.4,239.4 L165.6,237.0 L164.6,234.7 L161.7,233.3 L165.6,230.6 L165.9,228.7 Z"},
+  PA:{name:"Pará",region:"norte",cx:282.2,cy:88.0,d:"M323.2,78.0 L323.1,79.5 L324.4,78.0 L325.6,80.3 L326.9,78.7 L326.4,80.9 L329.3,79.5 L329.3,82.0 L329.8,81.1 L330.8,82.2 L332.1,79.9 L331.2,83.3 L332.3,81.1 L332.3,83.1 L333.5,81.4 L332.6,89.3 L330.6,90.4 L331.9,91.2 L331.1,95.0 L329.3,96.1 L329.5,99.5 L326.6,101.5 L327.6,103.3 L322.2,111.9 L321.6,115.5 L315.8,123.4 L302.0,133.4 L306.4,133.9 L309.3,136.4 L307.4,138.3 L308.2,140.5 L305.8,143.3 L306.4,145.7 L303.7,146.6 L303.1,149.1 L296.7,152.3 L297.0,156.0 L294.7,159.7 L297.4,162.8 L296.6,167.5 L292.2,175.2 L287.0,180.6 L284.8,187.2 L208.2,182.0 L203.1,176.3 L198.4,174.2 L197.8,167.7 L188.0,149.6 L190.5,146.8 L211.6,98.3 L215.9,93.5 L209.1,95.7 L208.4,93.5 L204.9,92.1 L203.4,89.9 L200.7,89.9 L194.1,86.0 L193.4,82.5 L191.7,84.0 L188.5,81.5 L183.4,73.3 L183.1,54.5 L187.8,54.0 L187.6,51.7 L189.8,50.1 L193.5,51.2 L193.7,49.3 L199.0,48.8 L201.7,45.2 L204.3,44.9 L207.8,47.0 L211.8,45.7 L217.6,47.1 L218.2,44.7 L215.4,42.0 L217.3,38.9 L224.3,40.2 L229.3,38.2 L231.6,42.8 L231.8,47.9 L236.9,48.3 L239.5,51.4 L247.2,54.3 L247.4,58.1 L251.0,61.0 L250.2,64.6 L253.0,70.9 L255.9,72.8 L256.5,76.2 L257.8,76.3 L259.0,81.8 L262.8,83.9 L267.4,82.0 L267.7,78.6 L273.2,70.6 L279.6,67.0 L282.3,62.0 L285.6,60.8 L286.7,65.2 L291.2,64.8 L294.5,69.0 L300.0,71.9 L306.1,72.3 L305.4,75.2 L311.0,77.7 L312.1,75.8 L312.8,77.4 L314.4,75.6 L316.9,78.4 L317.4,76.3 L320.7,77.2 L320.6,78.5 L321.6,77.2 L321.9,78.9 L323.2,78.0 Z"},
+  PB:{name:"Paraíba",region:"nordeste",cx:439.7,cy:153.8,d:"M437.3,141.6 L438.1,143.0 L435.5,145.3 L434.2,149.7 L436.6,149.5 L437.2,151.1 L441.9,149.9 L443.2,153.0 L445.7,150.9 L445.5,148.4 L446.6,148.7 L445.5,146.5 L447.0,144.7 L451.9,147.0 L463.7,147.0 L465.8,155.0 L465.4,159.7 L462.5,157.9 L457.8,158.5 L457.1,161.0 L446.7,162.9 L444.3,166.5 L440.0,168.8 L437.7,164.7 L435.8,164.9 L438.2,162.5 L438.0,160.1 L440.1,158.9 L437.2,156.5 L427.3,163.1 L424.8,163.1 L424.0,161.3 L421.2,162.2 L419.8,160.5 L421.9,156.7 L419.2,153.1 L421.0,150.6 L422.1,146.1 L421.1,145.8 L422.8,145.1 L426.8,147.4 L431.1,143.5 L437.3,141.6 Z"},
+  PE:{name:"Pernambuco",region:"nordeste",cx:430.9,cy:165.3,d:"M437.9,156.9 L440.1,158.9 L438.0,160.1 L438.2,162.5 L435.8,164.9 L437.7,164.7 L440.0,168.8 L444.3,166.5 L446.7,162.9 L457.1,161.0 L457.8,158.5 L462.5,157.9 L465.3,159.7 L465.3,165.2 L461.6,176.1 L452.9,175.4 L450.2,176.6 L449.0,179.2 L444.6,181.2 L441.5,180.4 L440.5,181.7 L431.0,175.4 L425.4,181.1 L424.7,177.4 L422.5,177.2 L422.6,175.4 L420.7,177.0 L418.8,174.7 L413.8,173.7 L412.0,171.6 L406.0,175.1 L405.2,177.7 L401.8,177.9 L400.8,181.4 L397.4,182.9 L395.6,182.6 L396.9,179.1 L393.9,175.2 L388.8,173.6 L397.8,166.8 L398.4,163.2 L396.8,162.3 L396.4,158.8 L398.3,157.9 L408.7,156.9 L415.4,163.5 L419.8,160.6 L421.2,162.2 L424.0,161.3 L424.8,163.1 L427.3,163.1 L434.1,157.6 L437.9,156.9 Z"},
+  PI:{name:"Piauí",region:"nordeste",cx:370.1,cy:154.4,d:"M384.3,102.9 L390.0,105.2 L388.0,109.6 L390.2,113.7 L390.0,117.6 L391.7,117.7 L391.9,119.2 L390.1,127.6 L393.9,131.4 L394.1,141.7 L396.2,149.0 L400.4,150.8 L398.3,157.9 L396.4,158.8 L396.8,162.3 L398.4,163.2 L397.8,166.8 L388.5,173.7 L383.2,180.1 L378.4,180.6 L372.3,184.5 L369.9,182.0 L366.3,182.2 L363.9,180.3 L359.6,183.7 L361.8,189.2 L356.3,196.7 L353.9,195.7 L351.0,196.7 L346.9,200.3 L343.2,199.0 L341.0,196.6 L341.4,194.5 L339.3,190.6 L336.8,192.4 L334.9,191.8 L336.9,182.9 L334.4,176.3 L337.1,172.5 L340.3,162.2 L342.1,160.1 L349.7,157.9 L357.2,150.4 L361.1,149.6 L364.6,151.3 L370.5,149.2 L371.6,145.2 L368.7,141.8 L368.4,136.8 L371.9,131.4 L370.1,126.7 L371.3,123.0 L369.7,120.0 L375.4,110.6 L378.9,110.4 L383.3,105.5 L383.1,102.5 L384.3,102.9 Z"},
+  PR:{name:"Paraná",region:"sul",cx:270.7,cy:367.0,d:"M263.2,339.5 L272.6,341.1 L278.7,344.6 L287.6,343.8 L290.6,346.4 L292.5,350.2 L292.0,355.3 L296.8,361.2 L295.6,365.1 L304.1,365.1 L304.4,370.0 L307.9,368.8 L308.7,371.4 L310.6,371.8 L304.0,380.8 L297.1,381.1 L292.7,383.9 L288.1,381.1 L283.6,382.6 L280.7,381.1 L279.0,384.0 L272.8,384.9 L273.0,388.4 L270.9,389.6 L269.7,388.0 L265.5,388.2 L261.8,386.4 L245.8,384.5 L242.5,380.7 L241.8,376.5 L239.4,376.5 L239.3,375.0 L235.5,377.4 L233.5,376.1 L237.5,361.4 L236.5,358.6 L239.3,356.4 L240.7,350.6 L243.7,348.9 L245.1,344.5 L252.6,339.9 L261.4,341.1 L263.2,339.5 Z"},
+  RJ:{name:"Rio de Janeiro",region:"sudeste",cx:362.4,cy:342.8,d:"M351.8,348.6 L349.3,349.5 L347.6,348.0 L348.4,345.0 L354.7,343.0 L355.9,341.2 L350.4,340.4 L348.5,337.7 L360.6,333.8 L368.7,334.2 L378.1,329.6 L377.0,328.5 L380.3,321.5 L379.5,320.8 L382.7,318.3 L384.7,319.5 L384.6,322.6 L393.5,324.7 L392.1,327.2 L393.2,333.1 L381.7,339.5 L381.5,341.7 L382.9,342.1 L381.1,345.0 L368.9,344.8 L368.5,341.2 L366.2,342.7 L367.4,344.9 L363.1,346.0 L359.7,343.9 L355.5,345.7 L353.0,344.4 L349.7,346.0 L349.5,347.9 L351.8,348.6 Z M355.1,346.1 L356.7,347.2 L353.7,347.8 L355.1,346.1 Z M359.8,345.7 L357.7,346.0 L359.8,345.7 Z M367.4,342.4 L366.5,342.8 L367.4,342.4 Z"},
+  RN:{name:"Rio Grande do Norte",region:"nordeste",cx:441.0,cy:141.7,d:"M438.2,128.4 L443.6,130.3 L452.0,129.7 L457.7,131.1 L460.3,134.9 L463.8,147.0 L451.9,147.0 L447.0,144.7 L445.5,146.5 L446.6,148.7 L445.5,148.4 L445.7,150.9 L443.2,153.0 L441.9,149.9 L437.2,151.1 L436.6,149.5 L434.2,149.7 L437.9,141.7 L431.1,143.5 L426.8,147.4 L421.4,145.3 L423.0,142.2 L426.7,139.8 L432.4,128.3 L437.0,127.2 L438.2,128.4 Z"},
+  RO:{name:"Rondônia",region:"norte",cx:130.1,cy:195.3,d:"M94.3,187.7 L90.3,186.9 L93.9,184.7 L94.9,182.0 L100.1,182.1 L102.2,184.2 L104.5,182.1 L106.4,182.7 L106.2,180.9 L108.6,180.2 L110.3,182.3 L113.4,177.1 L121.5,176.6 L121.5,174.1 L124.1,172.1 L123.9,169.1 L125.9,169.0 L127.6,164.8 L136.5,164.9 L140.5,169.8 L142.4,169.8 L142.7,172.4 L144.5,172.2 L145.2,174.8 L147.8,175.6 L150.0,173.4 L152.9,176.2 L152.2,180.1 L151.0,180.3 L152.8,184.7 L151.4,191.0 L153.0,194.2 L151.9,201.0 L164.7,201.0 L166.0,202.4 L170.3,202.5 L171.1,205.9 L168.8,208.2 L168.8,211.2 L172.8,217.2 L169.3,220.5 L169.2,223.7 L166.8,226.1 L165.6,230.6 L161.8,233.4 L158.2,231.0 L148.5,231.7 L144.7,226.5 L137.5,225.2 L133.1,220.5 L131.5,221.3 L125.7,218.3 L119.8,219.1 L114.9,214.2 L114.3,215.0 L113.4,213.3 L111.1,213.1 L110.5,209.7 L108.4,209.6 L109.0,207.5 L107.2,204.1 L108.5,201.0 L106.4,194.9 L108.1,191.8 L107.1,185.5 L104.9,187.3 L102.4,186.0 L94.3,187.7 Z"},
+  RR:{name:"Roraima",region:"norte",cx:149.8,cy:40.7,d:"M171.1,31.5 L170.2,37.0 L171.3,40.9 L173.4,41.9 L173.0,46.9 L178.9,52.6 L183.2,54.1 L183.1,66.1 L169.7,66.1 L165.4,75.3 L166.6,77.7 L163.9,79.7 L161.3,79.5 L159.3,75.9 L157.4,75.2 L153.4,76.8 L151.0,84.8 L152.7,88.2 L147.9,85.9 L146.2,82.6 L140.7,78.3 L143.3,77.0 L144.5,73.2 L140.4,63.1 L141.1,56.2 L137.2,50.1 L138.4,45.9 L130.7,42.9 L130.2,40.0 L126.6,40.7 L122.5,39.3 L123.3,36.0 L120.5,31.9 L121.0,26.5 L113.5,18.3 L116.6,20.0 L121.3,19.7 L123.6,22.8 L126.9,22.3 L126.9,21.0 L129.1,23.1 L129.9,21.5 L132.5,21.8 L132.3,23.2 L135.4,25.9 L138.0,25.0 L137.9,20.8 L140.1,21.0 L141.5,19.0 L147.5,20.0 L151.8,18.2 L154.6,14.8 L158.4,15.0 L163.2,10.1 L161.6,6.6 L167.7,6.0 L170.2,9.4 L168.2,15.1 L173.9,16.8 L173.4,19.1 L175.8,21.9 L171.7,26.3 L172.4,29.0 L171.1,31.5 Z"},
+  RS:{name:"Rio Grande do Sul",region:"sul",cx:259.1,cy:434.0,d:"M263.5,447.9 L261.0,451.2 L263.2,453.4 L262.8,454.9 L260.4,457.3 L256.6,466.4 L247.4,474.0 L246.0,472.3 L247.2,466.9 L249.2,466.2 L250.8,462.5 L252.4,461.8 L253.5,463.7 L255.2,463.3 L257.1,459.3 L255.8,456.8 L256.7,454.7 L254.6,456.2 L255.5,457.6 L251.3,460.9 L247.7,460.0 L244.7,457.6 L243.5,453.9 L239.3,452.1 L233.6,446.5 L226.0,444.1 L222.0,439.0 L216.9,442.0 L216.8,438.4 L207.6,430.3 L204.5,430.0 L202.7,432.5 L197.8,431.3 L205.7,424.7 L210.1,418.5 L212.2,417.9 L218.5,409.3 L220.6,410.1 L219.7,408.0 L228.4,403.3 L227.8,402.4 L229.5,402.3 L231.0,399.4 L237.2,398.4 L238.5,396.1 L242.0,394.6 L244.7,395.7 L247.9,394.1 L248.6,395.6 L251.9,394.0 L252.5,395.7 L262.0,396.3 L265.3,399.3 L268.3,398.9 L274.7,403.0 L280.1,409.7 L290.2,410.5 L291.1,412.4 L288.2,413.7 L288.0,418.0 L285.5,420.0 L287.0,421.2 L286.1,420.1 L288.1,419.4 L290.8,420.9 L278.4,442.3 L263.0,454.9 L262.8,451.0 L265.7,451.4 L270.6,448.5 L270.7,446.8 L272.9,446.5 L273.7,441.8 L275.9,441.5 L276.1,439.8 L279.2,438.0 L278.9,433.4 L280.1,432.9 L280.7,434.8 L280.4,431.3 L276.5,434.2 L272.8,431.2 L272.2,429.0 L272.3,432.6 L274.6,433.6 L272.7,434.6 L272.2,438.0 L271.2,436.9 L270.5,442.0 L268.5,442.7 L268.5,444.2 L264.9,444.7 L263.5,447.9 Z"},
+  SC:{name:"Santa Catarina",region:"sul",cx:280.2,cy:396.5,d:"M243.8,387.8 L244.7,384.1 L248.9,384.0 L251.2,385.7 L255.3,385.1 L265.5,388.2 L269.7,388.0 L270.9,389.6 L273.0,388.4 L272.8,384.9 L279.0,384.0 L280.7,381.1 L283.6,382.6 L288.1,381.1 L292.7,383.9 L297.1,381.1 L303.3,380.5 L305.1,383.7 L302.9,389.7 L304.0,390.4 L303.8,394.5 L305.4,394.8 L303.7,396.0 L304.7,397.0 L303.3,398.8 L304.2,403.7 L302.2,411.1 L290.8,420.9 L287.9,419.4 L286.1,420.1 L286.7,421.1 L285.7,419.4 L287.9,418.4 L288.2,413.7 L291.0,412.5 L290.2,410.5 L280.1,409.7 L274.7,403.0 L268.3,398.9 L265.3,399.3 L262.0,396.3 L252.5,395.7 L251.9,394.0 L248.6,395.6 L247.9,394.1 L246.5,395.4 L242.5,395.1 L244.4,392.3 L243.8,387.8 Z M306.1,397.7 L304.2,403.1 L304.5,398.5 L306.1,397.7 Z"},
+  SE:{name:"Sergipe",region:"nordeste",cx:431.9,cy:195.0,d:"M428.7,183.5 L440.0,188.9 L447.0,195.1 L441.6,198.1 L433.9,207.7 L428.5,205.9 L428.5,203.5 L425.4,199.7 L425.7,197.6 L430.4,197.4 L429.9,194.3 L431.3,193.1 L430.2,189.2 L428.2,188.1 L428.7,183.5 Z"},
+  SP:{name:"São Paulo",region:"sudeste",cx:322.6,cy:345.5,d:"M332.7,355.4 L332.2,356.9 L329.8,356.7 L323.3,360.4 L312.7,368.7 L309.7,372.8 L310.6,371.8 L308.7,371.4 L307.9,368.8 L304.1,369.7 L305.0,365.9 L304.1,365.1 L295.6,365.1 L296.8,361.2 L292.0,355.3 L292.5,350.2 L291.2,347.0 L287.6,343.8 L278.7,344.6 L272.6,341.1 L267.3,341.1 L262.7,339.3 L261.4,341.1 L251.0,340.2 L259.2,334.8 L263.1,329.6 L263.1,327.2 L265.5,325.3 L265.4,322.7 L268.4,320.3 L268.8,316.7 L280.7,306.9 L296.1,308.6 L296.4,312.5 L299.3,311.1 L300.3,314.4 L301.2,311.0 L308.0,310.8 L308.1,309.4 L312.1,310.6 L312.5,309.0 L317.1,308.6 L319.9,311.7 L319.2,314.5 L321.5,317.0 L319.8,319.7 L322.5,326.1 L326.5,325.4 L328.4,326.7 L326.3,331.1 L327.2,333.2 L325.9,334.0 L327.3,334.7 L325.9,336.7 L329.6,339.5 L328.8,341.4 L330.4,342.2 L330.1,343.8 L336.8,343.4 L337.7,340.0 L341.4,340.9 L348.3,337.9 L350.4,340.4 L355.9,341.1 L354.7,343.0 L348.5,344.8 L347.4,347.7 L349.3,349.5 L347.2,349.1 L341.3,352.5 L341.3,354.9 L336.2,354.1 L332.7,355.4 Z M342.3,356.0 L340.7,355.7 L342.2,353.7 L343.5,355.9 L342.3,356.0 Z"},
+  TO:{name:"Tocantins",region:"norte",cx:313.3,cy:190.8,d:"M322.2,176.9 L325.4,182.1 L327.8,183.0 L326.8,185.9 L330.0,191.2 L336.8,192.4 L337.9,191.1 L336.4,194.4 L331.9,196.9 L327.1,204.6 L328.7,207.3 L333.3,208.6 L330.7,208.7 L330.0,211.6 L332.3,211.9 L329.7,213.6 L330.2,217.2 L332.6,218.9 L331.1,220.1 L330.8,224.5 L333.0,224.2 L330.1,225.0 L329.5,223.0 L329.0,224.8 L325.6,224.8 L317.6,228.6 L315.2,226.4 L314.7,230.7 L313.0,228.9 L309.0,228.8 L308.9,226.9 L305.7,228.6 L304.9,226.7 L304.0,228.9 L303.8,225.8 L300.8,222.8 L299.5,224.6 L297.8,222.6 L296.4,223.7 L294.8,228.4 L284.0,223.2 L285.8,217.9 L283.1,219.7 L281.4,223.5 L280.1,223.0 L278.7,206.6 L280.4,197.1 L287.0,180.6 L295.8,169.7 L297.4,162.8 L294.7,159.7 L297.0,156.0 L296.7,152.3 L303.1,149.1 L304.9,145.4 L306.4,145.7 L305.8,143.3 L308.2,140.5 L307.4,138.3 L309.3,136.8 L306.4,133.9 L302.0,133.4 L306.6,131.2 L312.2,132.3 L316.8,135.5 L318.2,144.4 L316.4,152.9 L313.9,155.6 L316.8,156.7 L315.7,158.4 L322.1,165.8 L327.3,163.9 L328.9,165.9 L328.0,169.0 L324.9,169.9 L322.2,176.9 Z"}
+};
+var REGION_LABEL = { norte:'Norte', nordeste:'Nordeste', centrooeste:'Centro-Oeste', sudeste:'Sudeste', sul:'Sul' };
+var CITY_POOL = {
+  norte:['Manaus, AM','Belém, PA','Porto Velho, RO'],
+  nordeste:['Salvador, BA','Recife, PE','Fortaleza, CE','São Luís, MA'],
+  centrooeste:['Brasília, DF','Goiânia, GO','Campo Grande, MS'],
+  sudeste:['São Paulo, SP','Rio de Janeiro, RJ','Belo Horizonte, MG','Vitória, ES'],
+  sul:['Curitiba, PR','Porto Alegre, RS','Florianópolis, SC']
+};
+
+/* ============================================================================
+   DADOS MOCKADOS — estrutura pronta para receber integração real.
+   Cada bloco // TODO indica exatamente onde plugar a fonte de dados real.
+   ============================================================================ */
+function mulberry32(seed){
+  return function(){
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+    var t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function seriesWithNoise(rng, base, points, volatility, trend){
+  var arr = []; var v = base;
+  for(var i=0;i<points;i++){
+    v = v * (1 + trend) + (rng()-0.5) * base * volatility;
+    arr.push(Math.max(0, Math.round(v)));
+  }
+  return arr;
+}
+function fmtMoney(n){ return 'R$ ' + Math.round(n).toLocaleString('pt-BR'); }
+// pra valores tipicamente menores que R$1 (CPC, CPA, CPM) — fmtMoney arredonda pro inteiro e mostra "R$ 0".
+function fmtMoneyPrecise(n){ return 'R$ ' + n.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+function fmtNum(n){ return Math.round(n).toLocaleString('pt-BR'); }
+function fmtPct(n,d){ return n.toFixed(typeof d==='number'?d:1).replace('.',',') + '%'; }
+function fmtX(n){ return n.toFixed(1).replace('.',',') + 'x'; }
+function fmtDuration(seconds){ var m = Math.floor(seconds/60), s = Math.round(seconds%60); return m+'m '+s+'s'; }
+function pick(rng, arr){ return arr[Math.floor(rng()*arr.length)]; }
+
+var MONTHS = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+var OBJECTIVES = ['Tráfego','Conversão','Reconhecimento','Engajamento','Vendas'];
+var FIRST_NAMES = ['Receita Josapar','Sabor de Casa','Tradição na Mesa','Sempre no Prato','Nutrição Real','Dia a Dia Melhor','Colheita Certa','Do Campo à Mesa','Momento Família','Escolha Consciente'];
+
+// hasConversion:true = mostra Conversões/CPA/Receita/ROAS. Só o Armazém vende direto (e-commerce);
+// as demais marcas rodam campanhas de Tráfego/Reconhecimento/Engajamento sem pixel de compra —
+// mostram Alcance/Engajamento em vez disso (métricas que fazem sentido pro objetivo real da campanha).
+var BRANDS = {
+  tiojoao: { id:'tiojoao', name:'Tio João', short:'Tio João', mark:'TJ', accent:'#D6190D',
+    tag:'Arroz · Linha completa', hasCampaigns:true, hasRegional:true, hasConversion:false, ecommerce:false, invBase:182000, seed:22 },
+  josapar: { id:'josapar', name:'Josapar Institucional', short:'Josapar', mark:'JP', accent:'#8B2323',
+    tag:'Marca institucional', hasCampaigns:true, hasRegional:true, hasConversion:false, ecommerce:false, invBase:24000, seed:11 },
+  suprasoy: { id:'suprasoy', name:'SupraSoy', short:'SupraSoy', mark:'SS', accent:'#6E558E',
+    tag:'Nutrição à base de soja', hasCampaigns:true, hasRegional:true, hasConversion:false, ecommerce:false, invBase:58000, seed:33 },
+  meubiju: { id:'meubiju', name:'Meu Biju', short:'Meu Biju', mark:'MB', accent:'#941B0F',
+    tag:'Arroz parboilizado', hasCampaigns:true, hasRegional:true, hasConversion:false, ecommerce:false, invBase:39000, seed:55 },
+  novaoliva: { id:'novaoliva', name:'Nova Oliva', short:'Nova Oliva', mark:'NO', accent:'#3F7D45',
+    tag:'Azeite · Só engajamento', hasCampaigns:false, hasRegional:false, hasConversion:false, ecommerce:false, invBase:14500, seed:44 },
+  armazem: { id:'armazem', name:'Armazém Tio João', short:'Armazém', mark:'AT', accent:'#D6190D',
+    tag:'E-commerce oficial', hasCampaigns:true, hasRegional:true, hasConversion:true, ecommerce:'migrating', invBase:51000, seed:66 }
+};
+var BRAND_ORDER = ['tiojoao','josapar','suprasoy','meubiju','novaoliva','armazem'];
+
+function buildBrandData(brand){
+  var rng = mulberry32(brand.seed);
+  var days = 90;
+  // TODO: conectar Google Ads API + Meta Marketing API (split por plataforma via taxonomia UTM)
+  var invSeriesAll = seriesWithNoise(rng, brand.invBase/30, days, 0.35, 0.002);
+  var metaShare = 0.55, googleShare = 0.45;
+  var impPerReal = 42 + rng()*10;
+  var ctrBase = brand.hasConversion ? (1.1 + rng()*0.9) : (1.6 + rng()*0.7);
+  var cpcBase = 0.55 + rng()*0.6;
+  function platformSlice(mult){ return invSeriesAll.map(function(v){ return v*mult; }); }
+
+  var social = {
+    followers: Math.round(18000 + rng()*140000),
+    growthPct: +(1.5 + rng()*6).toFixed(1),
+    reachSeries: seriesWithNoise(rng, 40000+rng()*80000, 12, 0.25, 0.01),
+    engagementSeries: seriesWithNoise(rng, 3000+rng()*8000, 12, 0.3, 0.015),
+    followersSeries: seriesWithNoise(rng, 16000+rng()*30000, 12, 0.05, 0.01),
+    byFormat: { reels: Math.round(4+rng()*6), feed: Math.round(2+rng()*3), stories: Math.round(1.5+rng()*2.5) },
+    engagementRate: +(1.8+rng()*3.2).toFixed(1),
+    nonFollowerPct: +(35+rng()*40).toFixed(0),
+    clicks: Math.round(1200+rng()*9000),
+    likes: Math.round(2000+rng()*15000),
+    comments: Math.round(100+rng()*1200),
+  };
+
+  var campaigns = [];
+  if(brand.hasCampaigns){
+    var n = 7;
+    for(var i=0;i<n;i++){
+      var platform = rng() > (i%2===0?0.4:0.6) ? 'Meta' : 'Google';
+      var ctr = ctrBase * (0.6+rng()*0.9);
+      var cpc = cpcBase * (0.6+rng()*0.8);
+      var conv = Math.round(80+rng()*900);
+      var roas = +(1.4+rng()*4.2).toFixed(1);
+      var cpm = +(8+rng()*25).toFixed(2);
+      campaigns.push({ name: FIRST_NAMES[i % FIRST_NAMES.length] + (i>=FIRST_NAMES.length?' '+(i+1):''), platform: platform, objective: pick(rng, OBJECTIVES), ctr: ctr, cpc: cpc, conv: conv, roas: roas, cpm: cpm });
+    }
+    campaigns.sort(function(a,b){ return b.conv - a.conv; });
+  }
+
+  function creativeSet(labelPool, metricLabel, metricGen){
+    var items = [];
+    for(var i=0;i<5;i++){ items.push({ name: labelPool[i % labelPool.length] + ' — v' + (i+1), metric: metricGen(rng, i), metricLabel: metricLabel }); }
+    return items;
+  }
+  var creatives = {
+    byCtr: creativeSet(['Criativo Receita','Criativo Sabor','Criativo Família'], 'CTR', function(r,i){ return fmtPct((3.2-i*0.35)+r()*0.4,1); }),
+    byConv: creativeSet(['Anúncio Promo','Anúncio Combo','Anúncio Linha'], 'Conversões', function(r,i){ return fmtNum(620-i*80+r()*60); }),
+    byReach: creativeSet(['Post Receita','Post Bastidores','Post Depoimento'], 'Alcance', function(r,i){ return fmtNum(48000-i*6000+r()*4000); }),
+    byEngagement: creativeSet(['Reels Preparo','Post Dica','Story Enquete'], 'Engajamento', function(r,i){ return fmtPct((6.4-i*0.6)+r()*0.5,1); })
+  };
+
+  // ---------- Regional real (por estado) ----------
+  // TODO: conectar geo report do Google Ads / Meta Ads Insights (breakdown por estado)
+  var regionMult = { norte:0.55+rng()*0.3, nordeste:0.9+rng()*0.4, centrooeste:0.6+rng()*0.35, sudeste:1.3+rng()*0.5, sul:1.0+rng()*0.4 };
+  var states = {};
+  var totalRaw = 0;
+  Object.keys(BR_STATES).forEach(function(uf){
+    var st = BR_STATES[uf];
+    var raw = regionMult[st.region] * (0.5 + rng());
+    states[uf] = { raw: raw, growth: -6 + rng()*22 };
+    totalRaw += raw;
+  });
+  Object.keys(states).forEach(function(uf){ states[uf].sharePct = states[uf].raw/totalRaw*100; });
+
+  var cities = [];
+  Object.keys(CITY_POOL).forEach(function(region){
+    CITY_POOL[region].forEach(function(c){ cities.push({ name:c, region:region, reach: (40+rng()*260)*regionMult[region], growth: -5+rng()*24 }); });
+  });
+  cities.sort(function(a,b){ return b.reach-a.reach; });
+  cities = cities.slice(0,6);
+
+  return { invSeriesAll: invSeriesAll, platformSlice: platformSlice, metaShare: metaShare, googleShare: googleShare,
+    impPerReal: impPerReal, ctrBase: ctrBase, cpcBase: cpcBase, social: social, campaigns: campaigns, creatives: creatives,
+    states: states, cities: cities };
+}
+
+var STATE = { brand: BRAND_ORDER[0], section:'midia', period:30, dateFrom:null, dateTo:null, platform:'all', data:{}, charts:{} };
+
+var ICONS = {
+  midia:'wallet', campanhas:'megaphone', sazonais:'gift', social:'users', criativos:'image', regional:'map', ecommerce:'shopping-bag',
+  up:'trending-up', down:'trending-down', invest:'wallet', impressions:'eye', clicks:'mouse-pointer-click', ctr:'percent',
+  cpc:'coins', conv:'target', cpa:'calculator', revenue:'banknote', roas:'gauge', followers:'users', growth:'trending-up',
+  reach:'radio', engagement:'heart', engRate:'activity', nonFollower:'user-plus', clock:'clock', image:'image-off',
+  lock:'lock', pin:'map-pin', sessions:'globe', usersIcon:'users', bounce:'log-out', pageviews:'file-text',
+  likes:'thumbs-up', comments:'message-circle'
+};
+function iconSvg(name){ return '<i data-lucide="'+name+'"></i>'; }
+
+/* ============================================================================
+   TOPBAR — DOCK DE LOGOS (troca de marca, com ampliação ao passar o mouse)
+   ============================================================================ */
+var LOGO_MAP = {
+  tiojoao:'logo-tiojoao.png', josapar:'logo-josapar.png', suprasoy:'logo-suprasoy.png',
+  meubiju:'logo-meubiju.png', novaoliva:'logo-novaoliva.png', armazem:'logo-armazem.png'
+};
+function renderBrandDock(){
+  var html = BRAND_ORDER.map(function(id){
+    var b = BRANDS[id];
+    return '<button class="dock-icon'+(STATE.brand===id?' active':'')+'" data-brand="'+id+'" style="--pc:'+b.accent+'" onclick="switchBrand(\''+id+'\')" aria-label="'+b.name+'">'+
+      '<span class="dock-label">'+b.name+'</span>'+
+      '<img src="'+LOGO_MAP[id]+'" alt="'+b.name+'" onerror="this.style.display=\'none\'; this.parentElement.textContent=\''+b.mark+'\';">'+
+    '</button>';
+  }).join('');
+  document.getElementById('brand-dock').innerHTML = html;
+}
+function initDockMagnify(){
+  var dock = document.getElementById('brand-dock');
+  var MAX_SCALE = 1.22, RADIUS = 80;
+  dock.addEventListener('mousemove', function(e){
+    var icons = dock.querySelectorAll('.dock-icon');
+    icons.forEach(function(icon){
+      var rect = icon.getBoundingClientRect();
+      var center = rect.left + rect.width/2;
+      var dist = Math.abs(e.clientX - center);
+      var t = Math.max(0, 1 - dist/RADIUS);
+      var scale = 1 + (MAX_SCALE-1)*t;
+      icon.style.transform = 'scale('+scale.toFixed(3)+') translateY('+(-(scale-1)*6).toFixed(1)+'px)';
+    });
+  });
+  dock.addEventListener('mouseleave', function(){
+    dock.querySelectorAll('.dock-icon').forEach(function(icon){ icon.style.transform = ''; });
+  });
+}
+function updateSidebarLogo(b){
+  document.getElementById('sidebar-logo-img').src = LOGO_MAP[b.id];
+  document.getElementById('sidebar-logo-img').alt = b.name;
+  document.getElementById('sidebar-brand-name').textContent = b.name;
+}
+function switchBrand(id){
+  if(STATE.brand===id) return;
+  STATE.brand = id;
+  var b = BRANDS[id];
+  if(!STATE.data[id]) STATE.data[id] = buildBrandData(b);
+  document.body.setAttribute('data-brand', id);
+  document.querySelectorAll('.dock-icon').forEach(function(el){ el.classList.toggle('active', el.getAttribute('data-brand')===id); });
+  updateSidebarLogo(b);
+
+  renderNav(b);
+  var validSections = navSectionIds(b);
+  if(validSections.indexOf(STATE.section)===-1) STATE.section = 'midia';
+  renderSection();
+}
+
+function navSectionIds(b){
+  var ids = ['midia'];
+  if(b.hasCampaigns) ids.push('campanhas');
+  ids.push('social','criativos');
+  if(b.hasRegional) ids.push('regional');
+  if(b.ecommerce) ids.push('ecommerce');
+  if(b.hasCampaigns) ids.push('sazonais');
+  return ids;
+}
+function renderNav(b){
+  var defs = {
+    midia:{label:'Performance de Mídia', icon:ICONS.midia},
+    campanhas:{label:'Análise de Campanhas', icon:ICONS.campanhas},
+    sazonais:{label:'Campanhas Sazonais', icon:ICONS.sazonais},
+    social:{label:'Social Media', icon:ICONS.social},
+    criativos:{label:'Criativos', icon:ICONS.criativos},
+    regional:{label:'Regional', icon:ICONS.regional},
+    ecommerce:{label:'E-commerce', icon:ICONS.ecommerce}
+  };
+  var ids = navSectionIds(b);
+  var html = ids.map(function(id){
+    var d = defs[id];
+    return '<button class="nav-item'+(id===STATE.section?' active':'')+'" data-nav="'+id+'" onclick="switchSection(\''+id+'\')">'+
+      iconSvg(d.icon)+'<span>'+d.label+'</span>'+(d.badge?'<span class="nav-badge">'+d.badge+'</span>':'')+'</button>';
+  }).join('');
+  document.getElementById('nav-scroll').innerHTML = '<div class="nav-section-label">Seções</div>'+html;
+  lucide.createIcons();
+}
+// seções onde o filtro de Plataforma (Meta/Google) faz sentido — nas outras não tem o que filtrar
+// (Social/Regional são fontes únicas — Windsor.ai e GA4 — e Criativos hoje só existe via Meta).
+var PLATFORM_FILTER_SECTIONS = { midia:true, campanhas:true, sazonais:true };
+function switchSection(id){
+  STATE.section = id;
+  document.querySelectorAll('.nav-item').forEach(function(el){ el.classList.toggle('active', el.getAttribute('data-nav')===id); });
+  renderFilterPills();
+  renderSection();
+}
+
+/* ============================================================================
+   FILTROS — PILLS
+   ============================================================================ */
+function renderFilterPills(){
+  var isCustom = !!(STATE.dateFrom && STATE.dateTo);
+  var periods = [[7,'7D'],[30,'30D'],[90,'90D']];
+  var periodHtml = periods.map(function(p){
+    return '<button class="pp'+(!isCustom && STATE.period===p[0]?' active':'')+'" onclick="setPeriod('+p[0]+')">'+p[1]+'</button>';
+  }).join('');
+  var customLabel = isCustom ? (fmtDateShort(STATE.dateFrom)+'–'+fmtDateShort(STATE.dateTo)) : 'Personalizado';
+  periodHtml += '<button class="pp'+(isCustom?' active':'')+'" onclick="toggleCustomRangePanel()">'+customLabel+'</button>';
+  document.getElementById('period-pills').innerHTML = periodHtml;
+  var platforms = [['all','Todas'],['meta','Meta'],['google','Google']];
+  document.getElementById('platform-pills').innerHTML = platforms.map(function(p){
+    return '<button class="pp'+(STATE.platform===p[0]?' active':'')+'" onclick="setPlatform(\''+p[0]+'\')">'+p[1]+'</button>';
+  }).join('');
+  var platformGroupEl = document.getElementById('platform-filter-group');
+  if(platformGroupEl) platformGroupEl.style.display = PLATFORM_FILTER_SECTIONS[STATE.section] ? '' : 'none';
+}
+function fmtDateShort(iso){ return iso.slice(8,10)+'/'+iso.slice(5,7); }
+function setPeriod(days){ STATE.period = days; STATE.dateFrom = null; STATE.dateTo = null; closeCustomRangePanel(); renderFilterPills(); renderSection(); }
+function toggleCustomRangePanel(){
+  var pop = document.getElementById('custom-range-pop');
+  var opening = !pop.classList.contains('open');
+  pop.classList.toggle('open', opening);
+  if(opening){
+    var fromEl = document.getElementById('custom-date-from'), toEl = document.getElementById('custom-date-to');
+    var todayIso = new Date().toISOString().slice(0,10);
+    fromEl.max = todayIso; toEl.max = todayIso;
+    if(STATE.dateFrom) fromEl.value = STATE.dateFrom;
+    if(STATE.dateTo) toEl.value = STATE.dateTo;
+    document.getElementById('custom-range-error').style.display = 'none';
+  }
+}
+function closeCustomRangePanel(){ var pop = document.getElementById('custom-range-pop'); if(pop) pop.classList.remove('open'); }
+function applyCustomRange(){
+  var from = document.getElementById('custom-date-from').value;
+  var to = document.getElementById('custom-date-to').value;
+  var errEl = document.getElementById('custom-range-error');
+  var todayIso = new Date().toISOString().slice(0,10);
+  if(!from || !to || from > to || to > todayIso){ errEl.style.display = 'block'; return; }
+  STATE.dateFrom = from; STATE.dateTo = to;
+  STATE.period = Math.max(1, Math.round((new Date(to) - new Date(from)) / 86400000) + 1);
+  closeCustomRangePanel();
+  renderFilterPills();
+  renderSection();
+}
+document.addEventListener('click', function(e){
+  var pop = document.getElementById('custom-range-pop');
+  var group = document.getElementById('period-filter-group');
+  if(!pop || !pop.classList.contains('open')) return;
+  if(group && group.contains(e.target)) return; // clique dentro do grupo (botões ou painel) — não fecha
+  closeCustomRangePanel();
+});
+function setPlatform(p){ STATE.platform = p; renderFilterPills(); renderSection(); }
+function platformMultiplier(){
+  var d = STATE.data[STATE.brand];
+  if(STATE.platform==='meta') return d.metaShare;
+  if(STATE.platform==='google') return d.googleShare;
+  return 1;
+}
+
+/* ============================================================================
+   RENDER — SEÇÕES
+   ============================================================================ */
+var SECTION_META = {
+  midia: {title:'Performance de Mídia', sub:'Investimento, alcance e conversão da marca no período selecionado'},
+  campanhas: {title:'Análise de Campanhas', sub:'Ranking de campanhas ativas por retorno sobre investimento'},
+  sazonais: {title:'Campanhas Sazonais', sub:'Performance agrupada por evento/época do ano — detectado pelo nome da campanha'},
+  social: {title:'Social Media', sub:'Crescimento orgânico, alcance e engajamento por formato'},
+  criativos: {title:'Criativos', sub:'Anúncios e posts com melhor desempenho no período'},
+  regional: {title:'Regional', sub:'Distribuição de alcance e crescimento por estado e cidade'},
+  ecommerce: {title:'E-commerce', sub:'Indicadores de loja online integrados via Shopify'}
+};
+
+function renderSection(){
+  var b = BRANDS[STATE.brand];
+  var meta = SECTION_META[STATE.section];
+  document.getElementById('section-title').textContent = meta.title;
+  document.getElementById('section-sub').textContent = meta.sub;
+
+  Object.values(STATE.charts).forEach(function(c){ if(c) c.destroy(); });
+  STATE.charts = {};
+
+  var el = document.getElementById('content');
+  if(STATE.section==='midia') el.innerHTML = sectionMidia(b);
+  else if(STATE.section==='campanhas') el.innerHTML = sectionCampanhas(b);
+  else if(STATE.section==='sazonais') el.innerHTML = sectionSazonais(b);
+  else if(STATE.section==='social') el.innerHTML = sectionSocial(b);
+  else if(STATE.section==='criativos') el.innerHTML = sectionCriativos(b);
+  else if(STATE.section==='regional') el.innerHTML = sectionRegional(b);
+  else if(STATE.section==='ecommerce') el.innerHTML = sectionEcommerce(b);
+
+  lucide.createIcons();
+  requestAnimationFrame(function(){
+    mountCharts(b);
+    if(STATE.section==='regional'){ mountMap(b); loadRealCitiesIfAvailable(b.id, STATE.period); }
+    if(STATE.section==='social'){ loadRealSocialIfAvailable(b.id, STATE.period); }
+    if(STATE.section==='midia'){ loadRealMediaIfAvailable(b.id, STATE.period); }
+    if(STATE.section==='criativos'){ loadRealMediaIfAvailable(b.id, STATE.period); }
+    if(STATE.section==='campanhas'){ loadRealCampaignsIfAvailable(b.id, STATE.period); }
+    if(STATE.section==='sazonais'){ loadRealSazonaisIfAvailable(b.id, STATE.period); }
+  });
+}
+
+function accentVar(name){ return getComputedStyle(document.body).getPropertyValue(name).trim(); }
+function kpiDelta(rng){ var v = (rng()-0.35)*24; var up = v >= 0; return {up:up, pct: Math.abs(v).toFixed(1)}; }
+
+function kpiCard(seedOffset, icon, label, value, source, id){
+  var rng = mulberry32(BRANDS[STATE.brand].seed + seedOffset + STATE.period);
+  var d = kpiDelta(rng);
+  var idAttr = id ? ' id="kpi-'+id+'"' : '';
+  return ''+
+  '<div class="kpi-card '+(d.up?'trend-up':'trend-down')+'"'+idAttr+'>'+
+    '<div class="kpi-top">'+
+      '<div class="kpi-label-wrap"><span class="kpi-label">'+label+'</span>'+(source?'<span class="kpi-source" data-role="source">'+source+'</span>':'')+'</div>'+
+      '<div class="kpi-icon">'+iconSvg(icon)+'</div>'+
+    '</div>'+
+    '<div class="kpi-value" data-role="value">'+value+'</div>'+
+    '<div class="kpi-delta '+(d.up?'up':'down')+'" data-role="delta">'+iconSvg(d.up?ICONS.up:ICONS.down)+' '+d.pct+'%'+
+      '<span class="kpi-delta-label">vs. mês anterior</span></div>'+
+  '</div>';
+}
+function periodSlice(arr){ return arr.slice(Math.max(0, arr.length - STATE.period)); }
+function periodLabels(){ var out = []; for(var i=STATE.period;i>0;i--){ out.push(i===1?'hoje':'-'+i+'d'); } return out; }
+
+/* ---------- Mídia ---------- */
+function sectionMidia(b){
+  var d = STATE.data[b.id];
+  var mult = platformMultiplier();
+  var invSlice = periodSlice(d.invSeriesAll).map(function(v){ return v*mult; });
+  var totalInv = invSlice.reduce(function(a,c){return a+c;},0);
+  var totalImp = totalInv * d.impPerReal;
+  var ctr = d.ctrBase * (0.9+ (mult) *0.1);
+  var totalClicks = totalImp * (ctr/100);
+  var cpc = d.cpcBase;
+  var src = STATE.platform==='meta' ? 'Meta Ads' : (STATE.platform==='google' ? 'Google Ads' : 'Meta + Google');
+  var kpis = '';
+  kpis += kpiCard(1, ICONS.invest, 'Investimento', fmtMoney(totalInv), src, 'media-invest');
+  kpis += kpiCard(2, ICONS.impressions, 'Impressões', fmtNum(totalImp), src, 'media-impressions');
+  kpis += kpiCard(3, ICONS.clicks, 'Cliques', fmtNum(totalClicks), src, 'media-clicks');
+  kpis += kpiCard(4, ICONS.ctr, 'CTR', fmtPct(ctr,2), 'Calculado', 'media-ctr');
+  kpis += kpiCard(5, ICONS.cpc, 'CPC', fmtMoneyPrecise(cpc), 'Calculado', 'media-cpc');
+  if(b.hasConversion){
+    var conv = totalClicks*0.045;
+    var cpa = totalInv/conv;
+    var revenue = totalInv * (2.1+mult*1.1);
+    var roas = revenue/totalInv;
+    kpis += kpiCard(6, ICONS.conv, 'Conversões', fmtNum(conv), src, 'media-conv');
+    kpis += kpiCard(7, ICONS.cpa, 'CPA', fmtMoneyPrecise(cpa), 'Calculado', 'media-cpa');
+    kpis += kpiCard(8, ICONS.revenue, 'Receita', fmtMoney(revenue), 'Calculado', 'media-revenue');
+    kpis += kpiCard(9, ICONS.roas, 'ROAS', fmtX(roas), 'Calculado', 'media-roas');
+  } else {
+    var reach = totalImp*0.62;
+    var engagement = totalClicks*1.8;
+    kpis += kpiCard(6, ICONS.reach, 'Alcance', fmtNum(reach), src, 'media-reach');
+    kpis += kpiCard(7, ICONS.engagement, 'Engajamento', fmtNum(engagement), src, 'media-engagement');
+  }
+
+  return ''+
+  '<div class="section-heading"><div><h2>Indicadores-chave</h2><p>'+src+' · últimos '+STATE.period+' dias</p></div></div>'+
+  '<div class="kpi-grid">'+kpis+'</div>'+
+  '<div class="panel-row">'+
+    '<div class="panel">'+
+      '<div class="panel-head"><h3>Investimento — série temporal</h3><span>'+STATE.period+' dias</span></div>'+
+      '<div class="chart-box tall"><canvas id="chart-invest"></canvas></div>'+
+    '</div>'+
+    '<div class="panel">'+
+      '<div class="panel-head"><h3>Breakdown por campanha</h3><span>Top 5</span></div>'+
+      '<div class="chart-box tall"><canvas id="chart-breakdown"></canvas></div>'+
+    '</div>'+
+  '</div>'+
+  (STATE.platform==='google' ?
+    '<div class="panel">'+
+      '<div class="panel-head"><h3>Top Keywords (Google Ads · Search)</h3><span id="keywords-badge" class="kpi-source">Google Ads</span></div>'+
+      '<div class="chart-box tall is-loading" id="chart-keywords-box"><canvas id="chart-keywords"></canvas>'+
+        '<p id="keywords-empty-note" class="keywords-empty-note">Sem campanhas de pesquisa (Search) no Google Ads pra essa marca neste período — keywords só existem pra esse tipo de campanha.</p>'+
+      '</div>'+
+    '</div>'
+  : '')+
+  '<div class="section-heading"><div><h2>Demografia e comportamento</h2><p>Meta + Google Ads · quem clica e quando</p></div></div>'+
+  '<div class="panel-row-3">'+
+    '<div class="panel">'+
+      '<div class="panel-head"><h3>Por idade</h3><span id="demo-age-badge" class="kpi-source">aguardando</span></div>'+
+      '<div class="chart-box is-loading" id="chart-age-box"><canvas id="chart-age"></canvas></div>'+
+    '</div>'+
+    '<div class="panel">'+
+      '<div class="panel-head"><h3>Por gênero</h3><span id="demo-gender-badge" class="kpi-source">aguardando</span></div>'+
+      '<div class="chart-box is-loading" id="chart-gender-box"><canvas id="chart-gender"></canvas></div>'+
+    '</div>'+
+    '<div class="panel">'+
+      '<div class="panel-head"><h3>Por dispositivo</h3><span id="demo-device-badge" class="kpi-source">aguardando</span></div>'+
+      '<div class="chart-box is-loading" id="chart-device-box"><canvas id="chart-device"></canvas></div>'+
+    '</div>'+
+  '</div>'+
+  '<div class="panel">'+
+    '<div class="panel-head"><h3>Cliques por hora do dia</h3><span id="demo-hour-badge" class="kpi-source">aguardando</span></div>'+
+    '<div class="chart-box is-loading" id="chart-hour-box"><canvas id="chart-hour"></canvas></div>'+
+  '</div>';
+}
+
+/* ---------- Campanhas ---------- */
+// infere o objetivo olhando palavras-chave no nome da campanha (convenção do time de mídia) —
+// não vem de um campo estruturado da API, é o mesmo critério que um humano usaria lendo o nome.
+var OBJECTIVE_NAME_PATTERNS = [
+  ['Vendas', ['venda','vendas','sales','shopping','aquisicao','compra']],
+  ['Conversão', ['conversao','conv','lead','cadastro','cad']],
+  ['Reconhecimento', ['reconhecimento','awareness','awar']],
+  ['Engajamento', ['engajamento','engaj','engagement']],
+  ['Tráfego', ['trafego','traffic','traf']],
+];
+function inferObjectiveFromName(name){
+  var norm = (name||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]/g,'');
+  for(var i=0;i<OBJECTIVE_NAME_PATTERNS.length;i++){
+    var pair = OBJECTIVE_NAME_PATTERNS[i];
+    for(var j=0;j<pair[1].length;j++){
+      if(norm.indexOf(pair[1][j])!==-1) return pair[0];
+    }
+  }
+  return '—';
+}
+var REAL_CAMPAIGNS = null; // preenchido por loadRealCampaignsIfAvailable; null = mostra mock
+function campaignRowHtml(c, i){
+  return '<tr><td><span class="rank-pill'+(i<3?' top':'')+'">'+(i+1)+'</span></td><td>'+c.name+'</td>'+
+    '<td><span class="platform-tag">'+c.platform+'</span></td><td>'+c.objective+'</td>'+
+    '<td>'+fmtPct(c.ctr,2)+'</td><td>'+fmtMoneyPrecise(c.cpc)+'</td><td>'+fmtNum(c.conv)+'</td>'+
+    '<td>'+fmtMoneyPrecise(c.cpm)+'</td></tr>';
+}
+function sectionCampanhas(b){
+  REAL_CAMPAIGNS = null; // toda troca de marca/aba volta a mostrar mock até o fetch real responder
+  var d = STATE.data[b.id];
+  var rows = d.campaigns.map(campaignRowHtml).join('');
+  return ''+
+  '<div class="section-heading">'+
+    '<div><h2>Ranking de campanhas ativas</h2><p>Ordenado por conversões — filtre por objetivo ou plataforma (pills do topo) para refinar</p></div>'+
+    '<div class="pillrow" id="objective-pills">'+
+      '<button class="pp active" onclick="filterCampaigns(\'all\', this)">Todos</button>'+
+      OBJECTIVES.map(function(o){return '<button class="pp" onclick="filterCampaigns(\''+o+'\', this)">'+o+'</button>';}).join('')+
+    '</div>'+
+  '</div>'+
+  '<div class="panel"><div class="table-wrap" id="campaigns-table-wrap"><table id="campaigns-table"><thead><tr>'+
+    '<th>#</th><th>Campanha</th><th>Plataforma</th><th>Objetivo</th><th>CTR</th><th>CPC</th><th>Conversões</th><th>CPM</th>'+
+  '</tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+}
+function filterCampaigns(objective, btn){
+  document.querySelectorAll('#objective-pills .pp').forEach(function(p){ p.classList.remove('active'); });
+  if(btn) btn.classList.add('active');
+  var source = REAL_CAMPAIGNS || STATE.data[STATE.brand].campaigns;
+  var rows = source.filter(function(c){ return objective==='all' || c.objective===objective; })
+    .map(campaignRowHtml).join('');
+  document.querySelector('#campaigns-table tbody').innerHTML = rows || '<tr><td colspan="8" style="color:var(--text-tertiary);text-align:center;padding:24px;">Nenhuma campanha com esse objetivo no período.</td></tr>';
+}
+function loadRealCampaignsIfAvailable(brandId, days){
+  var wantMeta = META_ENABLED_BRANDS[brandId] && STATE.platform!=='google';
+  var wantGoogle = GOOGLE_ENABLED_BRANDS[brandId] && STATE.platform!=='meta';
+  if(!wantMeta && !wantGoogle) return;
+  var requestBrand = STATE.brand, requestSection = STATE.section, requestPlatform = STATE.platform;
+  var wrapEl = document.getElementById('campaigns-table-wrap');
+  if(wrapEl) wrapEl.classList.add('is-loading');
+  var qs = rangeQueryString(days);
+  Promise.all([
+    wantMeta ? fetch('/api/meta?brand='+brandId+'&'+qs).then(function(r){ return r.ok ? r.json() : null; }).catch(function(){ return null; }) : Promise.resolve(null),
+    wantGoogle ? fetch('/api/googleads?brand='+brandId+'&'+qs).then(function(r){ return r.ok ? r.json() : null; }).catch(function(){ return null; }) : Promise.resolve(null),
+  ]).then(function(results){
+    if(STATE.brand!==requestBrand || STATE.section!==requestSection || STATE.platform!==requestPlatform) return;
+    if(wrapEl) wrapEl.classList.remove('is-loading');
+    var meta = results[0], google = results[1];
+    var cpmOf = function(c){ return c.impressions>0 ? (c.spend/c.impressions)*1000 : 0; };
+    var metaCampaigns = (meta && meta.matchedCampaignsCount) ? meta.campaigns.map(function(c){
+      return { name:c.name, platform:'Meta', objective:inferObjectiveFromName(c.name), ctr:c.ctr, cpc:c.cpc, conv:c.conversions, cpm:cpmOf(c) };
+    }) : [];
+    var googleCampaigns = (google && google.matchedCampaignsCount) ? google.campaigns.map(function(c){
+      return { name:c.name, platform:'Google', objective:inferObjectiveFromName(c.name), ctr:c.ctr, cpc:c.cpc, conv:c.conversions, cpm:cpmOf(c) };
+    }) : [];
+    var all = metaCampaigns.concat(googleCampaigns).sort(function(a,b){ return b.conv-a.conv || b.ctr-a.ctr; });
+    if(!all.length) return; // nenhuma campanha real da marca no período em nenhuma fonte — mantém mock
+    REAL_CAMPAIGNS = all;
+    var activeBtn = document.querySelector('#objective-pills .pp.active');
+    var activeObjective = activeBtn ? (activeBtn.textContent==='Todos' ? 'all' : activeBtn.textContent) : 'all';
+    filterCampaigns(activeObjective, null);
+    if(activeBtn) activeBtn.classList.add('active'); // filterCampaigns(objective,null) não marca nenhum botão — repõe o que já estava ativo
+  });
+}
+
+/* ---------- Campanhas Sazonais ---------- */
+// detecta campanhas de época/evento pelo nome (mesmo critério humano usado nos objetivos) —
+// padrões vistos em campanhas reais da conta: copa-do-mundo, dia-das-maes, black-friday etc.
+// "Natal" e "Lançamento" foram removidos: os únicos matches reais eram falsos positivos
+// (um vídeo institucional com "sem-natal" no título, e uma campanha de lançamento de produto —
+// nenhum dos dois é uma campanha sazonal de verdade, só bateu a substring por coincidência).
+var SEASON_PATTERNS = [
+  ['Copa do Mundo', ['copadomundo']],
+  ['Dia das Mães', ['diadasmaes','diasdasmaes']],
+  ['Dia das Crianças', ['diadascriancas']],
+  ['Dia dos Pais', ['diadospais']],
+  ['Black Friday', ['blackfriday']],
+  ['Páscoa', ['pascoa']],
+  ['Promoção/Desconto', ['promocao','promo','desconto']],
+];
+function inferSeasonFromName(name){
+  var norm = (name||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]/g,'');
+  for(var i=0;i<SEASON_PATTERNS.length;i++){
+    var pair = SEASON_PATTERNS[i];
+    for(var j=0;j<pair[1].length;j++){
+      if(norm.indexOf(pair[1][j])!==-1) return pair[0];
+    }
+  }
+  return null; // não é campanha sazonal
+}
+function sazonalRowHtml(s, i){
+  return '<tr><td><span class="rank-pill'+(i<3?' top':'')+'">'+(i+1)+'</span></td><td>'+s.season+'</td>'+
+    '<td>'+fmtMoney(s.spend)+'</td><td>'+fmtNum(s.impressions)+'</td><td>'+fmtNum(s.clicks)+'</td>'+
+    '<td>'+fmtPct(s.ctr,2)+'</td><td>'+fmtMoneyPrecise(s.cpm)+'</td><td>'+fmtNum(s.conversions)+'</td></tr>';
+}
+function sectionSazonais(b){
+  return '<div class="section-heading"><div><h2>Campanhas sazonais</h2><p>Detecção automática por palavra-chave no nome da campanha — Copa do Mundo, Black Friday, Natal, Dia das Mães etc.</p></div></div>'+
+  '<div class="panel"><div class="table-wrap is-loading" id="sazonais-table-wrap"><table id="sazonais-table"><thead><tr>'+
+    '<th>#</th><th>Época/Evento</th><th>Investimento</th><th>Impressões</th><th>Cliques</th><th>CTR</th><th>CPM</th><th>Conversões</th>'+
+  '</tr></thead><tbody id="sazonais-tbody"></tbody></table></div>'+
+  '<p id="sazonais-empty-note" style="display:none;color:var(--text-tertiary);text-align:center;padding:24px;font-size:12px;">Nenhuma campanha sazonal detectada da marca no período (procuramos nomes como Copa do Mundo, Black Friday, Natal, Dia das Mães...).</p>'+
+  '</div>';
+}
+function loadRealSazonaisIfAvailable(brandId, days){
+  var wantMeta = META_ENABLED_BRANDS[brandId] && STATE.platform!=='google';
+  var wantGoogle = GOOGLE_ENABLED_BRANDS[brandId] && STATE.platform!=='meta';
+  if(!wantMeta && !wantGoogle) return;
+  var requestBrand = STATE.brand, requestSection = STATE.section, requestPlatform = STATE.platform;
+  var wrapEl = document.getElementById('sazonais-table-wrap');
+  if(wrapEl) wrapEl.classList.add('is-loading');
+  var qs = rangeQueryString(days);
+  Promise.all([
+    wantMeta ? fetch('/api/meta?brand='+brandId+'&'+qs).then(function(r){ return r.ok ? r.json() : null; }).catch(function(){ return null; }) : Promise.resolve(null),
+    wantGoogle ? fetch('/api/googleads?brand='+brandId+'&'+qs).then(function(r){ return r.ok ? r.json() : null; }).catch(function(){ return null; }) : Promise.resolve(null),
+  ]).then(function(results){
+    if(STATE.brand!==requestBrand || STATE.section!==requestSection || STATE.platform!==requestPlatform) return;
+    if(wrapEl) wrapEl.classList.remove('is-loading');
+    var meta = results[0], google = results[1];
+    var allCampaigns = []
+      .concat((meta && meta.matchedCampaignsCount) ? meta.campaigns : [])
+      .concat((google && google.matchedCampaignsCount) ? google.campaigns : []);
+    var seasonMap = {};
+    allCampaigns.forEach(function(c){
+      var season = inferSeasonFromName(c.name);
+      if(!season) return;
+      if(!seasonMap[season]) seasonMap[season] = { season:season, spend:0, impressions:0, clicks:0, conversions:0 };
+      seasonMap[season].spend += c.spend;
+      seasonMap[season].impressions += c.impressions;
+      seasonMap[season].clicks += c.clicks;
+      seasonMap[season].conversions += c.conversions;
+    });
+    var rows = Object.keys(seasonMap).map(function(k){
+      var s = seasonMap[k];
+      s.ctr = s.impressions>0 ? (s.clicks/s.impressions)*100 : 0;
+      s.cpm = s.impressions>0 ? (s.spend/s.impressions)*1000 : 0;
+      return s;
+    }).sort(function(a,b){ return b.spend-a.spend; });
+    var tbodyEl = document.getElementById('sazonais-tbody');
+    var emptyNoteEl = document.getElementById('sazonais-empty-note');
+    if(tbodyEl) tbodyEl.innerHTML = rows.map(sazonalRowHtml).join('');
+    if(emptyNoteEl) emptyNoteEl.style.display = rows.length ? 'none' : 'block';
+  });
+}
+
+/* ---------- Social ---------- */
+function sectionSocial(b){
+  var d = STATE.data[b.id].social;
+  var kpis = '';
+  kpis += kpiCard(11, ICONS.followers, 'Seguidores totais', fmtNum(d.followers), 'Instagram', 'social-followers');
+  kpis += kpiCard(12, ICONS.growth, 'Crescimento', fmtPct(d.growthPct), 'Instagram', 'social-growth');
+  kpis += kpiCard(13, ICONS.reach, 'Alcance', fmtNum(d.reachSeries[d.reachSeries.length-1]), 'Windsor.ai', 'social-reach');
+  kpis += kpiCard(14, ICONS.likes, 'Curtidas', fmtNum(d.likes), 'Windsor.ai', 'social-likes');
+  kpis += kpiCard(15, ICONS.engagement, 'Engajamento', fmtNum(d.engagementSeries[d.engagementSeries.length-1]), 'Instagram', 'social-engagement');
+  kpis += kpiCard(16, ICONS.engRate, 'Taxa de engajamento', fmtPct(d.engagementRate), 'Calculado', 'social-engrate');
+  kpis += kpiCard(17, ICONS.nonFollower, '% não seguidores', fmtPct(d.nonFollowerPct,0), 'Instagram', 'social-nonfollower');
+  kpis += kpiCard(18, ICONS.comments, 'Comentários', fmtNum(d.comments), 'Windsor.ai', 'social-comments');
+
+  return ''+
+  '<div class="section-heading"><div><h2>Indicadores-chave</h2><p>Fonte: Supermetrics/Windsor.ai — conector de social orgânico</p></div></div>'+
+  '<div class="kpi-grid">'+kpis+'</div>'+
+  '<div class="panel-row">'+
+    '<div class="panel"><div class="panel-head"><h3>Crescimento de seguidores</h3><span>12 meses</span></div><div class="chart-box"><canvas id="chart-followers"></canvas></div></div>'+
+    '<div class="panel"><div class="panel-head"><h3>Engajamento por formato</h3><span>Média mensal</span></div><div class="chart-box"><canvas id="chart-format"></canvas></div></div>'+
+  '</div>'+
+  '<div class="panel">'+
+    '<div class="panel-head"><h3>Alcance vs. engajamento</h3><span>Evolução mensal</span></div>'+
+    '<div class="chart-box"><canvas id="chart-reach-eng"></canvas></div>'+
+    '<div class="legend-row"><div class="legend-item"><span class="legend-dot" style="background:var(--accent-text)"></span>Alcance</div>'+
+    '<div class="legend-item"><span class="legend-dot" style="background:var(--chart-line-muted)"></span>Engajamento</div></div>'+
+  '</div>';
+}
+
+/* ---------- Criativos ---------- */
+function creativeCards(items){
+  return items.map(function(it, i){
+    var thumb = it.thumbnail
+      ? '<div class="creative-shimmer"></div>'+
+        '<img src="'+it.thumbnail+'" alt="" loading="lazy" class="creative-img" '+
+        'onload="this.classList.add(\'loaded\');this.previousElementSibling.style.display=\'none\';" '+
+        'onerror="this.style.display=\'none\';this.previousElementSibling.style.display=\'none\';this.nextElementSibling.style.display=\'flex\';">'+
+        '<div class="creative-thumb-fallback">'+iconSvg(ICONS.image)+'<span class="creative-thumb-label">Prévia indisponível</span></div>'
+      : iconSvg(ICONS.image)+'<span class="creative-thumb-label">Sem preview — aguardando Image URL</span>';
+    return '<div class="creative-card"><div class="creative-thumb"><span class="rank-pill'+(i===0?' top':'')+'">'+(i+1)+'</span>'+
+      thumb+'</div>'+
+      '<div class="creative-info"><div class="creative-name">'+it.name+'</div><div class="creative-metric">'+it.metricLabel+': '+it.metric+'</div></div></div>';
+  }).join('');
+}
+function sectionCriativos(b){
+  var c = STATE.data[b.id].creatives;
+  var blocks = '<div class="creative-block"><div class="creative-block-title">'+iconSvg(ICONS.ctr)+'Top 5 Criativos por CTR<span id="creatives-badge" class="kpi-source" style="margin-left:8px;">mídia (mock)</span></div><div class="creative-grid" id="creative-grid-ctr">'+creativeCards(c.byCtr)+'</div></div>';
+  if(b.hasConversion) blocks += '<div class="creative-block"><div class="creative-block-title">'+iconSvg(ICONS.conv)+'Top 5 Criativos por Conversão</div><div class="creative-grid" id="creative-grid-conv">'+creativeCards(c.byConv)+'</div></div>';
+  blocks += '<div class="creative-block"><div class="creative-block-title">'+iconSvg(ICONS.reach)+'Top 5 Criativos por Alcance</div><div class="creative-grid" id="creative-grid-reach">'+creativeCards(c.byReach)+'</div></div>';
+  blocks += '<div class="creative-block"><div class="creative-block-title">'+iconSvg(ICONS.engagement)+'Top 5 Criativos por Engajamento</div><div class="creative-grid" id="creative-grid-engagement">'+creativeCards(c.byEngagement)+'</div></div>';
+  return '<div class="section-heading"><div><h2>Criativos e posts vencedores</h2><p>Diferencial estratégico — visualização direta, sem análise manual externa</p></div></div>'+blocks;
+}
+
+/* ---------- Regional (mapa real por estado) ---------- */
+/* ---------- GA4 (dados reais, quando disponível) ---------- */
+var GA4_ENABLED_BRANDS = { josapar:true, tiojoao:true, armazem:true };
+function renderCityRows(cities, metricKey, metricLabel){
+  metricKey = metricKey || 'reach';
+  metricLabel = metricLabel || 'alcance (mil)';
+  if(!cities || !cities.length) return '<p style="font-size:11px;color:var(--text-tertiary);">Sem dados de cidade no período.</p>';
+  var max = cities[0][metricKey] || 1;
+  return cities.map(function(c, i){
+    var val = c[metricKey] || 0;
+    var pct = Math.min(100, (val/max)*100);
+    return '<div class="city-row"><span class="rank-pill'+(i===0?' top':'')+'">'+(i+1)+'</span>'+
+      '<div class="city-info"><div class="city-name">'+c.name.split(',')[0]+'</div><div class="city-bar-bg"><div class="city-bar-fill" style="width:'+pct.toFixed(0)+'%"></div></div></div>'+
+      '<div class="city-metric">'+fmtNum(val)+'<small>'+metricLabel+'</small></div></div>';
+  }).join('');
+}
+function rangeQueryString(days){
+  return (STATE.dateFrom && STATE.dateTo) ? ('date_from='+STATE.dateFrom+'&date_to='+STATE.dateTo) : ('days='+days);
+}
+// nomes de dimensão 'region' do GA4 (inglês, sem acento) -> UF. Qualquer região que não bater
+// com esta lista (ex: "Xinjiang", "California" — tráfego de bot/VPN) é descartada, não vira estado fantasma.
+var GA4_REGION_TO_UF = {
+  'acre':'AC','alagoas':'AL','amapa':'AP','amazonas':'AM','bahia':'BA','ceara':'CE',
+  'federal district':'DF','distrito federal':'DF','espirito santo':'ES','goias':'GO','maranhao':'MA',
+  'mato grosso':'MT','mato grosso do sul':'MS','minas gerais':'MG','para':'PA','paraiba':'PB',
+  'parana':'PR','pernambuco':'PE','piaui':'PI','rio de janeiro':'RJ','rio grande do norte':'RN',
+  'rio grande do sul':'RS','rondonia':'RO','roraima':'RR','santa catarina':'SC','sao paulo':'SP',
+  'sergipe':'SE','tocantins':'TO',
+};
+function regionNameToUf(name){
+  var norm = (name||'').toLowerCase().replace(/^state of /,'').replace(/^estado de /,'').trim();
+  return GA4_REGION_TO_UF[norm] || null;
+}
+function loadRealCitiesIfAvailable(brandId, days){
+  if(!GA4_ENABLED_BRANDS[brandId]) return;
+  var requestBrand = STATE.brand, requestSection = STATE.section;
+  var badgeElLoad = document.getElementById('city-source-badge');
+  var listElLoad = document.getElementById('city-rows') && document.getElementById('city-rows').closest('.city-list');
+  var mapWrapEl = document.querySelector('.br-map-wrap');
+  var regionWrapEl = document.getElementById('region-table-wrap');
+  var regionBadgeEl = document.getElementById('region-source-badge');
+  if(badgeElLoad) badgeElLoad.textContent = 'carregando…';
+  if(listElLoad) listElLoad.classList.add('is-loading');
+  if(mapWrapEl) mapWrapEl.classList.add('is-loading');
+  if(regionWrapEl) regionWrapEl.classList.add('is-loading');
+  fetch('/api/ga4?brand='+brandId+'&'+rangeQueryString(days))
+    .then(function(r){ if(!r.ok) throw new Error('http '+r.status); return r.json(); })
+    .then(function(data){
+      if(STATE.brand!==requestBrand || STATE.section!==requestSection) return; // usuário já trocou de marca/aba
+      if(listElLoad) listElLoad.classList.remove('is-loading');
+      if(mapWrapEl) mapWrapEl.classList.remove('is-loading');
+      if(regionWrapEl) regionWrapEl.classList.remove('is-loading');
+
+      var rowsEl = document.getElementById('city-rows');
+      var badgeEl = document.getElementById('city-source-badge');
+      var noteEl = document.getElementById('city-source-note');
+      if(rowsEl && data.cities){
+        rowsEl.innerHTML = renderCityRows(data.cities, 'users', 'usuários (GA4)');
+        if(badgeEl){ badgeEl.textContent = 'GA4 · dados reais'; badgeEl.style.color = 'var(--success)'; badgeEl.style.borderColor = 'rgba(61,220,132,0.3)'; }
+        if(noteEl){ noteEl.textContent = 'Usuários por cidade — Google Analytics 4, últimos '+days+' dias.'; }
+      }
+
+      if(data.kpis){
+        var k = data.kpis;
+        var analyticsFields = [
+          ['analytics-users', k.users, fmtNum],
+          ['analytics-sessions', k.sessions, fmtNum],
+          ['analytics-engaged', k.engagedSessions, fmtNum],
+          ['analytics-bounce', k.bounceRate, function(v){ return fmtPct(v,1); }],
+          ['analytics-duration', k.avgSessionDuration, fmtDuration],
+          ['analytics-pageviews', k.pageViews, fmtNum],
+        ];
+        analyticsFields.forEach(function(f){
+          var id = f[0], metric = f[1], fmt = f[2];
+          var card = document.getElementById('kpi-'+id);
+          if(card && metric){ card.classList.remove('is-loading'); patchKpiCard(id, fmt(metric.value), metric.delta, 'GA4 · real'); }
+        });
+      }
+
+      if(data.regions && data.regions.length){
+        var byUf = {}, total = 0;
+        data.regions.forEach(function(r){
+          var uf = regionNameToUf(r.name);
+          if(!uf) return; // não é estado do Brasil (bot/VPN) — descarta
+          byUf[uf] = (byUf[uf]||0) + r.users;
+          total += r.users;
+        });
+        var byUfPrev = {};
+        (data.regionsPrev||[]).forEach(function(r){
+          var uf = regionNameToUf(r.name);
+          if(!uf) return;
+          byUfPrev[uf] = (byUfPrev[uf]||0) + r.users;
+        });
+        if(total > 0){
+          var realStates = {};
+          Object.keys(BR_STATES).forEach(function(uf){
+            var cur = byUf[uf] || 0;
+            var prev = byUfPrev[uf] || 0;
+            var growth = prev > 0 ? ((cur-prev)/prev)*100 : (cur > 0 ? 100 : 0);
+            realStates[uf] = { sharePct: cur ? (cur/total)*100 : 0, growth: growth };
+          });
+          STATE.data[brandId].states = realStates;
+          mountMap(BRANDS[brandId]);
+          var tbodyEl = document.getElementById('region-ranking-tbody');
+          if(tbodyEl) tbodyEl.innerHTML = buildRegionTableRows(realStates);
+          if(regionBadgeEl){ regionBadgeEl.textContent = 'GA4 · dados reais'; regionBadgeEl.style.color = 'var(--success)'; regionBadgeEl.style.borderColor = 'rgba(61,220,132,0.3)'; }
+        }
+      }
+    })
+    .catch(function(){
+      if(listElLoad) listElLoad.classList.remove('is-loading');
+      if(mapWrapEl) mapWrapEl.classList.remove('is-loading');
+      if(regionWrapEl) regionWrapEl.classList.remove('is-loading');
+      if(badgeElLoad) badgeElLoad.textContent = 'mídia (mock)';
+      /* sem backend (ex: aberto como arquivo local) — mantém mock, sem erro visível */
+    });
+}
+
+/* ---------- Windsor.ai (Instagram orgânico, quando disponível) ---------- */
+var WINDSOR_ENABLED_BRANDS = { josapar:true, tiojoao:true, suprasoy:true, meubiju:true };
+function patchKpiCard(id, value, deltaPct, sourceLabel){
+  var card = document.getElementById('kpi-'+id);
+  if(!card) return;
+  var valEl = card.querySelector('[data-role="value"]');
+  if(valEl) valEl.textContent = value;
+  var srcEl = card.querySelector('[data-role="source"]');
+  if(srcEl) srcEl.textContent = sourceLabel || 'dados reais';
+  if(deltaPct===undefined || deltaPct===null) return;
+  var deltaEl = card.querySelector('[data-role="delta"]');
+  if(!deltaEl) return;
+  var up = deltaPct >= 0;
+  card.classList.remove('trend-up','trend-down'); card.classList.add(up?'trend-up':'trend-down');
+  deltaEl.classList.remove('up','down'); deltaEl.classList.add(up?'up':'down');
+  deltaEl.innerHTML = iconSvg(up?ICONS.up:ICONS.down)+' '+Math.abs(deltaPct).toFixed(1)+'%<span class="kpi-delta-label">vs. mês anterior</span>';
+}
+var SOCIAL_KPI_IDS = ['social-followers','social-growth','social-reach','social-likes','social-engagement','social-engrate','social-comments'];
+var SOCIAL_CHART_IDS = ['chart-followers','chart-format','chart-reach-eng'];
+function setSocialLoading(on){
+  SOCIAL_KPI_IDS.forEach(function(id){ var el = document.getElementById('kpi-'+id); if(el) el.classList.toggle('is-loading', on); });
+  SOCIAL_CHART_IDS.forEach(function(id){ var canvas = document.getElementById(id); var box = canvas && canvas.closest('.chart-box'); if(box) box.classList.toggle('is-loading', on); });
+}
+function loadRealSocialIfAvailable(brandId, days){
+  if(!WINDSOR_ENABLED_BRANDS[brandId]) return;
+  var requestBrand = STATE.brand, requestSection = STATE.section;
+  setSocialLoading(true);
+  fetch('/api/windsor?brand='+brandId+'&'+rangeQueryString(days))
+    .then(function(r){ if(!r.ok) throw new Error('http '+r.status); return r.json(); })
+    .then(function(data){
+      if(STATE.brand!==requestBrand || STATE.section!==requestSection) return; // usuário já trocou de marca/aba
+      setSocialLoading(false);
+      var k = data.kpis || {};
+      patchKpiCard('social-followers', fmtNum(k.followers), k.growthPct, 'Windsor.ai · real');
+      patchKpiCard('social-growth', fmtPct(k.growthPct), null, 'Windsor.ai · real');
+      patchKpiCard('social-reach', fmtNum(k.reach), null, 'Windsor.ai · real');
+      patchKpiCard('social-likes', fmtNum(k.likes), null, 'Windsor.ai · real');
+      patchKpiCard('social-engagement', fmtNum(k.engagement), null, 'Windsor.ai · real');
+      patchKpiCard('social-engrate', fmtPct(k.engagementRate), null, 'Windsor.ai · real');
+      patchKpiCard('social-comments', fmtNum(k.comments), null, 'Windsor.ai · real');
+      // % não seguidores: sem campo real disponível no Windsor.ai — mantém mock
+
+      if(data.followersSeries && data.followersSeries.values.length && STATE.charts.followers){
+        STATE.charts.followers.data.labels = data.followersSeries.labels;
+        STATE.charts.followers.data.datasets[0].data = data.followersSeries.values;
+        STATE.charts.followers.update();
+      }
+      if(data.byFormat && STATE.charts.format){
+        STATE.charts.format.data.datasets[0].data = [data.byFormat.reels, data.byFormat.feed, data.byFormat.stories];
+        STATE.charts.format.update();
+      }
+      if(data.timeline && data.timeline.labels.length && STATE.charts.reachEng){
+        STATE.charts.reachEng.data.labels = data.timeline.labels;
+        STATE.charts.reachEng.data.datasets[0].data = data.timeline.reach;
+        STATE.charts.reachEng.data.datasets[1].data = data.timeline.engagement;
+        STATE.charts.reachEng.update();
+      }
+    })
+    .catch(function(){ setSocialLoading(false); /* sem backend ou API key ausente — mantém mock, sem erro visível */ });
+}
+
+/* ---------- Meta Ads + Google Ads (mídia paga real, quando disponível) ---------- */
+var META_ENABLED_BRANDS = { tiojoao:true, suprasoy:true, meubiju:true, novaoliva:true, armazem:true, josapar:true };
+var GOOGLE_ENABLED_BRANDS = { tiojoao:true, suprasoy:true, meubiju:true, novaoliva:true, armazem:true, josapar:true };
+var MEDIA_KPI_IDS_CONV = ['media-invest','media-impressions','media-clicks','media-ctr','media-cpc','media-conv','media-cpa','media-revenue','media-roas'];
+var MEDIA_KPI_IDS_NOCONV = ['media-invest','media-impressions','media-clicks','media-ctr','media-cpc','media-reach','media-engagement'];
+var MEDIA_CHART_IDS = ['chart-invest','chart-breakdown'];
+function setMediaLoading(on){
+  MEDIA_KPI_IDS_CONV.concat(MEDIA_KPI_IDS_NOCONV).forEach(function(id){ var el = document.getElementById('kpi-'+id); if(el) el.classList.toggle('is-loading', on); });
+  MEDIA_CHART_IDS.forEach(function(id){ var canvas = document.getElementById(id); var box = canvas && canvas.closest('.chart-box'); if(box) box.classList.toggle('is-loading', on); });
+}
+function mergeTimelines(a, b){
+  var map = {};
+  var order = [];
+  (a||{labels:[],values:[]}).labels.forEach(function(l,i){ if(!(l in map)){ map[l]=0; order.push(l); } map[l]+=a.values[i]; });
+  (b||{labels:[],values:[]}).labels.forEach(function(l,i){ if(!(l in map)){ map[l]=0; order.push(l); } map[l]+=b.values[i]; });
+  return { labels: order, values: order.map(function(l){ return map[l]; }) };
+}
+var CREATIVE_GRID_IDS = ['creative-grid-ctr','creative-grid-conv','creative-grid-reach','creative-grid-engagement'];
+function setCreativeGridsLoading(on){
+  CREATIVE_GRID_IDS.forEach(function(id){ var el = document.getElementById(id); if(el) el.classList.toggle('is-loading', on); });
+}
+function loadRealMediaIfAvailable(brandId, days){
+  // Criativos não tem filtro de Plataforma na tela (só existe via Meta hoje) — não deixa um
+  // filtro Google/Meta escolhido em Mídia "vazar" e esconder os criativos quando o usuário troca de aba.
+  var isCriativos = STATE.section==='criativos';
+  var wantMeta = META_ENABLED_BRANDS[brandId] && (isCriativos || STATE.platform!=='google');
+  var wantGoogle = !isCriativos && GOOGLE_ENABLED_BRANDS[brandId] && STATE.platform!=='meta';
+  if(!wantMeta && !wantGoogle) return;
+  var requestBrand = STATE.brand, requestSection = STATE.section, requestPlatform = STATE.platform;
+  setMediaLoading(true);
+  setCreativeGridsLoading(true);
+  var qs = rangeQueryString(days);
+  Promise.all([
+    wantMeta ? fetch('/api/meta?brand='+brandId+'&'+qs).then(function(r){ return r.ok ? r.json() : null; }).catch(function(){ return null; }) : Promise.resolve(null),
+    wantGoogle ? fetch('/api/googleads?brand='+brandId+'&'+qs).then(function(r){ return r.ok ? r.json() : null; }).catch(function(){ return null; }) : Promise.resolve(null),
+  ]).then(function(results){
+    if(STATE.brand!==requestBrand || STATE.section!==requestSection || STATE.platform!==requestPlatform) return;
+    setMediaLoading(false);
+    setCreativeGridsLoading(false);
+    var meta = results[0], google = results[1];
+    var metaOk = meta && meta.matchedCampaignsCount;
+    var googleOk = google && google.matchedCampaignsCount;
+    if(!metaOk && !googleOk) return; // sem campanha real da marca no período em nenhuma fonte — mantém mock
+
+    var sourceLabel = (metaOk && googleOk) ? 'Meta + Google · real' : (metaOk ? 'Meta Ads · real' : 'Google Ads · real');
+    var mk = metaOk ? meta.kpis : { spend:0, impressions:0, clicks:0, conversions:0, revenue:0 };
+    var gk = googleOk ? google.kpis : { spend:0, impressions:0, clicks:0, conversions:0, revenue:0 };
+    var spend = mk.spend + gk.spend, impressions = mk.impressions + gk.impressions, clicks = mk.clicks + gk.clicks;
+    var conversions = mk.conversions + gk.conversions, revenue = mk.revenue + gk.revenue;
+    var ctr = impressions>0 ? (clicks/impressions)*100 : 0;
+    var cpc = clicks>0 ? spend/clicks : 0;
+    var cpa = conversions>0 ? spend/conversions : 0;
+    var roas = spend>0 ? revenue/spend : 0;
+
+    patchKpiCard('media-invest', fmtMoney(spend), null, sourceLabel);
+    patchKpiCard('media-impressions', fmtNum(impressions), null, sourceLabel);
+    patchKpiCard('media-clicks', fmtNum(clicks), null, sourceLabel);
+    patchKpiCard('media-ctr', fmtPct(ctr,2), null, sourceLabel);
+    patchKpiCard('media-cpc', fmtMoneyPrecise(cpc), null, sourceLabel);
+    if(document.getElementById('kpi-media-conv')){
+      patchKpiCard('media-conv', fmtNum(conversions), null, sourceLabel);
+      patchKpiCard('media-cpa', fmtMoneyPrecise(cpa), null, sourceLabel);
+      patchKpiCard('media-revenue', fmtMoney(revenue), null, sourceLabel);
+      patchKpiCard('media-roas', fmtX(roas), null, sourceLabel);
+    } else if(document.getElementById('kpi-media-reach')){
+      // Alcance e Engajamento são conceitos exclusivos do Meta. Google Ads tem um campo de "alcance único"
+      // (unique_users) na API, mas só é preenchido em campanhas com meta de frequência configurada — nenhuma
+      // campanha dessas marcas usa esse tipo (são Search/Shopping/PMax). Sem fonte real nenhuma das duas —
+      // some os cards em vez de inventar valor (impressão não é alcance, e não existe substituto pra engajamento).
+      var reachCard = document.getElementById('kpi-media-reach');
+      var engagementCard = document.getElementById('kpi-media-engagement');
+      if(metaOk){
+        if(reachCard) reachCard.style.display = '';
+        if(engagementCard) engagementCard.style.display = '';
+        patchKpiCard('media-reach', fmtNum(meta.kpis.reach), null, 'Meta Ads · real');
+        patchKpiCard('media-engagement', fmtNum(meta.kpis.engagement), null, 'Meta Ads · real');
+      } else {
+        if(reachCard) reachCard.style.display = 'none';
+        if(engagementCard) engagementCard.style.display = 'none';
+      }
+    }
+
+    var timeline = mergeTimelines(metaOk?meta.timeline:null, googleOk?google.timeline:null);
+    if(timeline.labels.length && STATE.charts.invest){
+      STATE.charts.invest.data.labels = timeline.labels;
+      STATE.charts.invest.data.datasets[0].data = timeline.values;
+      STATE.charts.invest.update();
+    }
+    var allCampaigns = (metaOk?meta.campaigns:[]).concat(googleOk?google.campaigns:[]).sort(function(a,b){ return b.spend-a.spend; });
+    if(allCampaigns.length && STATE.charts.breakdown){
+      var top = allCampaigns.slice(0,5);
+      STATE.charts.breakdown.data.labels = top.map(function(c){ return c.name.length>14 ? c.name.slice(0,14)+'…' : c.name; });
+      STATE.charts.breakdown.data.datasets[0].data = top.map(function(c){ return c.spend; });
+      STATE.charts.breakdown.update();
+    }
+
+    var kwBox = document.getElementById('chart-keywords-box');
+    var kwEmptyNote = document.getElementById('keywords-empty-note');
+    var kwBadge = document.getElementById('keywords-badge');
+    if(kwBox) kwBox.classList.remove('is-loading');
+    var keywords = googleOk ? (google.keywords || []) : [];
+    if(keywords.length){
+      if(kwEmptyNote) kwEmptyNote.classList.remove('show');
+      var ctxKw = document.getElementById('chart-keywords');
+      if(ctxKw){
+        var accentKw = accentVar('--accent-text');
+        var kwTop = keywords.slice(0,10);
+        var kwData = { labels: kwTop.map(function(k){ return k.text.length>22 ? k.text.slice(0,22)+'…' : k.text; }), datasets:[{ data: kwTop.map(function(k){ return k.clicks; }), backgroundColor:accentKw, borderRadius:6, maxBarThickness:26, hoverBackgroundColor:accentKw }] };
+        if(STATE.charts.keywords){ STATE.charts.keywords.data = kwData; STATE.charts.keywords.update(); }
+        else { STATE.charts.keywords = new Chart(ctxKw, { type:'bar', data:kwData, options: Object.assign(chartDefaults(), {indexAxis:'y', interaction:{ mode:'nearest', axis:'y', intersect:true }}) }); }
+      }
+      if(kwBadge){ kwBadge.textContent = 'Google Ads · real'; kwBadge.style.color = 'var(--success)'; kwBadge.style.borderColor = 'rgba(61,220,132,0.3)'; }
+    } else {
+      if(kwEmptyNote) kwEmptyNote.classList.add('show');
+      if(STATE.charts.keywords){ STATE.charts.keywords.destroy(); STATE.charts.keywords = null; }
+      if(kwBadge){ kwBadge.textContent = 'Google Ads'; kwBadge.style.color = ''; kwBadge.style.borderColor = ''; }
+    }
+
+    var ctrGridEl = document.getElementById('creative-grid-ctr');
+    var convGridEl = document.getElementById('creative-grid-conv');
+    var reachGridEl = document.getElementById('creative-grid-reach');
+    var engagementGridEl = document.getElementById('creative-grid-engagement');
+    var creativesBadge = document.getElementById('creatives-badge');
+    if(metaOk && meta.creatives){
+      if(ctrGridEl && meta.creatives.byCtr && meta.creatives.byCtr.length){
+        ctrGridEl.innerHTML = creativeCards(meta.creatives.byCtr.map(function(c){
+          return { name:c.name, metric:fmtPct(c.ctr,2), metricLabel:'CTR', thumbnail:c.thumbnail };
+        }));
+      }
+      if(convGridEl && meta.creatives.byConv && meta.creatives.byConv.length){
+        convGridEl.innerHTML = creativeCards(meta.creatives.byConv.map(function(c){
+          return { name:c.name, metric:fmtNum(c.conversions), metricLabel:'Conversões', thumbnail:c.thumbnail };
+        }));
+      }
+      if(reachGridEl && meta.creatives.byReach && meta.creatives.byReach.length){
+        reachGridEl.innerHTML = creativeCards(meta.creatives.byReach.map(function(c){
+          return { name:c.name, metric:fmtNum(c.reach), metricLabel:'Alcance', thumbnail:c.thumbnail };
+        }));
+      }
+      if(engagementGridEl && meta.creatives.byEngagement && meta.creatives.byEngagement.length){
+        engagementGridEl.innerHTML = creativeCards(meta.creatives.byEngagement.map(function(c){
+          return { name:c.name, metric:fmtNum(c.engagement), metricLabel:'Engajamento', thumbnail:c.thumbnail };
+        }));
+      }
+      if(creativesBadge){ creativesBadge.textContent = 'Meta Ads · real'; creativesBadge.style.color = 'var(--success)'; creativesBadge.style.borderColor = 'rgba(61,220,132,0.3)'; }
+    }
+
+    // ---- demografia: idade, gênero, dispositivo, hora — soma Meta+Google no mesmo rótulo normalizado ----
+    var AGE_ORDER = ['18-24','25-34','35-44','45-54','55-64','65+','Não informado'];
+    function normAge(raw){
+      if(/^AGE_RANGE_/.test(raw||'')){
+        var m = raw.replace('AGE_RANGE_','');
+        if(m==='UNDETERMINED') return 'Não informado';
+        if(m==='65_UP') return '65+';
+        return m.replace('_','-');
+      }
+      if(raw==='unknown') return 'Não informado';
+      return raw || 'Não informado';
+    }
+    function normGender(raw){
+      var r = (raw||'').toLowerCase();
+      if(r==='male') return 'Masculino';
+      if(r==='female') return 'Feminino';
+      return 'Não informado';
+    }
+    function normDevice(raw){
+      var r = (raw||'').toLowerCase();
+      if(r==='mobile_app' || r==='mobile_web' || r==='mobile') return 'Mobile';
+      if(r==='desktop') return 'Desktop';
+      if(r==='tablet') return 'Tablet';
+      if(r==='connected_tv') return 'Connected TV';
+      return 'Outro';
+    }
+    function sumInto(map, label, value){ map[label] = (map[label]||0) + value; }
+    function patchSimpleChart(chartKey, canvasId, boxId, badgeId, labels, values){
+      var box = document.getElementById(boxId);
+      if(box) box.classList.remove('is-loading');
+      var badge = document.getElementById(badgeId);
+      var ctx = document.getElementById(canvasId);
+      if(!labels.length){
+        if(badge) badge.textContent = 'sem dado no período';
+        return;
+      }
+      var accent = accentVar('--accent-text');
+      var chartData = { labels: labels, datasets:[{ data: values, backgroundColor: accent, borderRadius:6, maxBarThickness:34, hoverBackgroundColor: accent }] };
+      if(STATE.charts[chartKey]){ STATE.charts[chartKey].data = chartData; STATE.charts[chartKey].update(); }
+      else if(ctx){ STATE.charts[chartKey] = new Chart(ctx, { type:'bar', data: chartData, options: chartDefaults() }); }
+      if(badge){ badge.textContent = sourceLabel; badge.style.color = 'var(--success)'; badge.style.borderColor = 'rgba(61,220,132,0.3)'; }
+    }
+
+    var ageMap = {}, genderMap = {}, deviceMap = {}, hourMap = {};
+    if(metaOk && meta.ageGender) meta.ageGender.forEach(function(r){ sumInto(ageMap, normAge(r.age), r.clicks); sumInto(genderMap, normGender(r.gender), r.clicks); });
+    if(googleOk && google.ageGender){
+      (google.ageGender.byAge||[]).forEach(function(r){ sumInto(ageMap, normAge(r.age), r.clicks); });
+      (google.ageGender.byGender||[]).forEach(function(r){ sumInto(genderMap, normGender(r.gender), r.clicks); });
+    }
+    if(metaOk && meta.device) meta.device.forEach(function(r){ sumInto(deviceMap, normDevice(r.device), r.clicks); });
+    if(googleOk && google.device) google.device.forEach(function(r){ sumInto(deviceMap, normDevice(r.device), r.clicks); });
+    if(metaOk && meta.hourly) meta.hourly.forEach(function(r){ sumInto(hourMap, r.hour, r.clicks); });
+    if(googleOk && google.hourly) google.hourly.forEach(function(r){ sumInto(hourMap, r.hour, r.clicks); });
+
+    var ageLabels = AGE_ORDER.filter(function(l){ return ageMap[l]!==undefined; }).concat(Object.keys(ageMap).filter(function(l){ return AGE_ORDER.indexOf(l)===-1; }));
+    patchSimpleChart('age', 'chart-age', 'chart-age-box', 'demo-age-badge', ageLabels, ageLabels.map(function(l){ return ageMap[l]; }));
+
+    var genderLabels = Object.keys(genderMap);
+    patchSimpleChart('gender', 'chart-gender', 'chart-gender-box', 'demo-gender-badge', genderLabels, genderLabels.map(function(l){ return genderMap[l]; }));
+
+    var deviceLabels = Object.keys(deviceMap);
+    patchSimpleChart('device', 'chart-device', 'chart-device-box', 'demo-device-badge', deviceLabels, deviceLabels.map(function(l){ return deviceMap[l]; }));
+
+    var hourKeys = Object.keys(hourMap).map(Number).sort(function(a,b){ return a-b; });
+    patchSimpleChart('hour', 'chart-hour', 'chart-hour-box', 'demo-hour-badge', hourKeys.map(function(h){ return h+'h'; }), hourKeys.map(function(h){ return hourMap[h]; }));
+  });
+}
+function buildRegionTableRows(states){
+  var regionAgg = {};
+  Object.keys(REGION_LABEL).forEach(function(r){ regionAgg[r] = { reach:0, growthSum:0, n:0 }; });
+  Object.keys(states).forEach(function(uf){
+    var s = states[uf]; var r = BR_STATES[uf].region;
+    regionAgg[r].reach += s.sharePct; regionAgg[r].growthSum += s.growth; regionAgg[r].n++;
+  });
+  var regionRows = Object.keys(regionAgg).map(function(r){
+    return { key:r, label:REGION_LABEL[r], reach: regionAgg[r].reach, growth: regionAgg[r].n ? regionAgg[r].growthSum/regionAgg[r].n : 0 };
+  }).sort(function(a,b){ return b.reach-a.reach; });
+  return regionRows.map(function(r,i){
+    return '<tr><td><span class="rank-pill'+(i===0?' top':'')+'">'+(i+1)+'</span></td><td>'+r.label+'</td>'+
+      '<td>'+fmtPct(r.reach,1)+'</td><td class="'+(r.growth>=0?'roas-good':'roas-bad')+'">'+(r.growth>=0?'+':'')+fmtPct(r.growth,1)+'</td></tr>';
+  }).join('');
+}
+function analyticsKpiCard(id, icon, label){
+  return '<div class="kpi-card is-loading" id="kpi-'+id+'">'+
+    '<div class="kpi-top">'+
+      '<div class="kpi-label-wrap"><span class="kpi-label">'+label+'</span><span class="kpi-source" data-role="source">GA4</span></div>'+
+      '<div class="kpi-icon">'+iconSvg(icon)+'</div>'+
+    '</div>'+
+    '<div class="kpi-value" data-role="value">—</div>'+
+    '<div class="kpi-delta up" data-role="delta">'+iconSvg(ICONS.up)+' 0%<span class="kpi-delta-label">vs. período anterior</span></div>'+
+  '</div>';
+}
+function sectionRegional(b){
+  var d = STATE.data[b.id];
+  var states = d.states;
+  var tableRows = buildRegionTableRows(states);
+  var analyticsRow = GA4_ENABLED_BRANDS[b.id] ? (
+    '<div class="section-heading"><div><h2>Analytics do site</h2><p>Usuários e sessões — Google Analytics 4</p></div></div>'+
+    '<div class="kpi-grid" style="margin-bottom:20px;">'+
+      analyticsKpiCard('analytics-users', ICONS.usersIcon, 'Usuários')+
+      analyticsKpiCard('analytics-sessions', ICONS.sessions, 'Sessões')+
+      analyticsKpiCard('analytics-engaged', ICONS.engRate, 'Sessões engajadas')+
+      analyticsKpiCard('analytics-bounce', ICONS.bounce, 'Taxa de rejeição')+
+      analyticsKpiCard('analytics-duration', ICONS.clock, 'Duração média')+
+      analyticsKpiCard('analytics-pageviews', ICONS.pageviews, 'Páginas vistas')+
+    '</div>'
+  ) : '';
+
+  return ''+
+  analyticsRow+
+  '<div class="section-heading"><div><h2>Alcance por estado</h2><p>Cores = participação no alcance total · verde/vermelho = variação vs. mês anterior</p></div></div>'+
+  '<div class="panel">'+
+    '<div class="map-panel-body">'+
+      '<div class="br-map-wrap">'+
+        '<svg viewBox="'+BR_VIEWBOX+'" class="br-map" id="br-map-svg"></svg>'+
+        '<div class="map-tooltip" id="map-tooltip"></div>'+
+      '</div>'+
+      '<div class="city-list">'+
+        '<div class="subsection-label" style="margin-bottom:2px;">Top cidades <span id="city-source-badge" class="kpi-source" style="margin-left:6px;">mídia (mock)</span></div>'+
+        '<p id="city-source-note" style="font-size:10px;color:var(--text-tertiary);margin-bottom:6px;">Granularidade de cidade em lista — mapa acima é por estado.</p>'+
+        '<div id="city-rows">'+renderCityRows(d.cities, 'reach')+'</div>'+
+      '</div>'+
+    '</div>'+
+    '<div class="map-legend">'+
+      '<div class="map-legend-row"><span class="map-legend-swatch" style="background:linear-gradient(90deg, rgba(61,220,132,0.25), rgba(61,220,132,0.95));"></span>Crescimento — intensidade = participação no alcance</div>'+
+      '<div class="map-legend-row"><span class="map-legend-swatch" style="background:linear-gradient(90deg, rgba(241,84,63,0.25), rgba(241,84,63,0.95));"></span>Queda — intensidade = participação no alcance</div>'+
+    '</div>'+
+  '</div>'+
+  '<div class="panel"><div class="panel-head"><h3>Ranking regional</h3><span id="region-source-badge" class="kpi-source">mídia (mock)</span></div>'+
+    '<div class="table-wrap" id="region-table-wrap"><table><thead><tr><th>#</th><th>Região</th><th>Alcance</th><th>Crescimento</th></tr></thead><tbody id="region-ranking-tbody">'+tableRows+'</tbody></table></div></div>';
+}
+function mountMap(b){
+  var d = STATE.data[b.id];
+  var svg = document.getElementById('br-map-svg');
+  if(!svg) return;
+  var maxShare = Math.max.apply(null, Object.values(d.states).map(function(s){return s.sharePct;}));
+  var html = '';
+  Object.keys(BR_STATES).forEach(function(uf){
+    var st = BR_STATES[uf]; var s = d.states[uf];
+    var intensity = 0.25 + (s.sharePct/maxShare)*0.7;
+    var color = s.growth>=0 ? 'rgba(61,220,132,'+intensity.toFixed(2)+')' : 'rgba(241,84,63,'+intensity.toFixed(2)+')';
+    html += '<path class="br-state" d="'+st.d+'" fill="'+color+'" data-uf="'+uf+'"></path>';
+  });
+  svg.innerHTML = html;
+  var tooltip = document.getElementById('map-tooltip');
+  var wrap = svg.parentElement;
+  svg.querySelectorAll('.br-state').forEach(function(path){
+    path.addEventListener('mousemove', function(e){
+      var uf = path.getAttribute('data-uf');
+      var st = BR_STATES[uf]; var s = d.states[uf];
+      var rect = wrap.getBoundingClientRect();
+      tooltip.style.display = 'block';
+      tooltip.style.left = Math.min(rect.width-170, Math.max(0, e.clientX-rect.left+12)) + 'px';
+      tooltip.style.top = Math.max(0, e.clientY-rect.top-46) + 'px';
+      tooltip.innerHTML = '<div class="mt-name">'+st.name+' <span style="color:var(--text-tertiary);font-weight:500;">('+uf+')</span></div>'+
+        '<div class="mt-row"><span>Participação</span><b>'+fmtPct(s.sharePct,1)+'</b></div>'+
+        '<div class="mt-row"><span>Crescimento</span><b style="color:'+(s.growth>=0?'var(--success)':'var(--danger)')+'">'+(s.growth>=0?'+':'')+fmtPct(s.growth,1)+'</b></div>';
+    });
+    path.addEventListener('mouseleave', function(){ tooltip.style.display = 'none'; });
+  });
+}
+
+/* ---------- E-commerce (placeholder) ---------- */
+function sectionEcommerce(b){
+  var migrating = b.ecommerce === 'migrating';
+  var title = migrating ? 'Aguardando integração Shopify' : 'Aguardando acesso à conta Shopify';
+  var desc = migrating
+    ? 'O Armazém Tio João está em processo de migração da plataforma VTEX para a Shopify. A integração de dados de e-commerce será conectada assim que o acesso à nova plataforma for liberado.'
+    : 'O acesso à conta Shopify desta marca é gerido por uma empresa terceirizada. Assim que o convite de administrador for aceito, os indicadores de loja (pedidos, receita, ticket médio, conversão) aparecerão aqui automaticamente.';
+  var eta = migrating ? 'Previsão: liberação no dia 1' : 'Aguardando convite de acesso';
+  return '<div class="empty-state"><div class="empty-icon">'+iconSvg(migrating?ICONS.clock:ICONS.lock)+'</div>'+
+    '<h3>'+title+'</h3><p>'+desc+'</p><span class="empty-eta">'+eta+'</span></div>';
+}
+
+/* ============================================================================
+   CHART.JS
+   ============================================================================ */
+function chartDefaults(){
+  return {
+    plugins:{ legend:{display:false}, tooltip:{
+      backgroundColor:'#0D0D0D', borderColor:'rgba(255,255,255,0.1)', borderWidth:1,
+      titleColor:'#fff', titleFont:{ size:11, family:'Inter', weight:'600' },
+      bodyColor:'#ccc', bodyFont:{ size:11.5, family:'Inter' },
+      padding:11, cornerRadius:9, boxPadding:5, usePointStyle:true, displayColors:true,
+      caretSize:5,
+    } },
+    scales:{
+      x:{ grid:{ display:false }, ticks:{ color:accentVar('--text-tertiary'), font:{ size:10, family:'Inter' }, maxRotation:0, autoSkip:true, maxTicksLimit:8 } },
+      y:{ grid:{ color:accentVar('--chart-grid') }, ticks:{ color:accentVar('--text-tertiary'), font:{ size:10, family:'Inter' } }, border:{display:false} }
+    },
+    responsive:true, maintainAspectRatio:false,
+    interaction:{ mode:'index', intersect:false }
+  };
+}
+function areaGradient(ctx, colorHex, h){
+  var grad = ctx.getContext('2d').createLinearGradient(0,0,0,h||220);
+  grad.addColorStop(0, colorHex+'59');
+  grad.addColorStop(0.6, colorHex+'14');
+  grad.addColorStop(1, colorHex+'00');
+  return grad;
+}
+function mountCharts(b){
+  var d = STATE.data[b.id];
+  var accent = accentVar('--accent-text');
+
+  if(STATE.section==='midia'){
+    var mult = platformMultiplier();
+    var invSlice = periodSlice(d.invSeriesAll).map(function(v){ return v*mult; });
+    var ctx = document.getElementById('chart-invest');
+    if(ctx){
+      STATE.charts.invest = new Chart(ctx, { type:'line', data:{ labels:periodLabels(), datasets:[{ data:invSlice, borderColor:accent, backgroundColor:areaGradient(ctx,accent,220), fill:true, tension:0.4, pointRadius:0, pointHoverRadius:4, pointHoverBackgroundColor:accent, pointHoverBorderColor:'#0D0D0D', pointHoverBorderWidth:2, borderWidth:2.5 }]}, options: chartDefaults() });
+    }
+    var ctx2 = document.getElementById('chart-breakdown');
+    if(ctx2){
+      var top = (d.campaigns.length?d.campaigns:[{name:'Sem campanhas segmentadas'}]).slice(0,5);
+      var labels = d.campaigns.length ? top.map(function(c){return c.name.length>14?c.name.slice(0,14)+'…':c.name;}) : ['Linha única'];
+      var values = d.campaigns.length ? top.map(function(c){return c.conv*3.4;}) : [invSlice.reduce(function(a,c){return a+c;},0)];
+      STATE.charts.breakdown = new Chart(ctx2, { type:'bar', data:{ labels:labels, datasets:[{ data:values, backgroundColor:accent, borderRadius:6, maxBarThickness:34, hoverBackgroundColor:accent }]}, options: Object.assign(chartDefaults(), {indexAxis:'y', interaction:{ mode:'nearest', axis:'y', intersect:true }}) });
+    }
+  }
+
+  if(STATE.section==='social'){
+    var s = d.social;
+    var ctxF = document.getElementById('chart-followers');
+    if(ctxF) STATE.charts.followers = new Chart(ctxF, { type:'line', data:{ labels:MONTHS, datasets:[{ data:s.followersSeries, borderColor:accent, backgroundColor:areaGradient(ctxF,accent,220), fill:true, tension:0.4, pointRadius:0, pointHoverRadius:4, pointHoverBackgroundColor:accent, pointHoverBorderColor:'#0D0D0D', pointHoverBorderWidth:2, borderWidth:2.5 }]}, options: chartDefaults() });
+    var ctxFmt = document.getElementById('chart-format');
+    if(ctxFmt) STATE.charts.format = new Chart(ctxFmt, { type:'bar', data:{ labels:['Reels','Feed','Stories'], datasets:[{ data:[s.byFormat.reels, s.byFormat.feed, s.byFormat.stories], backgroundColor:[accent, accentVar('--chart-muted-1'), accentVar('--chart-muted-2')], borderRadius:8, maxBarThickness:56 }]}, options: chartDefaults() });
+    var ctxRE = document.getElementById('chart-reach-eng');
+    if(ctxRE){
+      STATE.charts.reachEng = new Chart(ctxRE, { type:'line', data:{ labels:MONTHS, datasets:[
+        { label:'Alcance', data:s.reachSeries, borderColor:accent, backgroundColor:areaGradient(ctxRE,accent,220), fill:true, tension:0.4, pointRadius:0, pointHoverRadius:4, pointHoverBackgroundColor:accent, pointHoverBorderColor:'#0D0D0D', pointHoverBorderWidth:2, borderWidth:2.5, yAxisID:'y' },
+        { label:'Engajamento', data:s.engagementSeries, borderColor:accentVar('--chart-line-muted'), backgroundColor:'transparent', tension:0.4, pointRadius:0, borderWidth:2, borderDash:[5,4], yAxisID:'y1' }
+      ]}, options: Object.assign(chartDefaults(), { scales: Object.assign(chartDefaults().scales, { y1:{ position:'right', grid:{display:false}, ticks:{color:accentVar('--text-tertiary'), font:{size:10,family:'Inter'}}, border:{display:false} } })}) });
+    }
+  }
+}
+
+/* ============================================================================
+   TEMA CLARO/ESCURO
+   ============================================================================ */
+var THEME_STORAGE_KEY = 'josapar-dash-theme';
+function applyTheme(theme){
+  document.documentElement.setAttribute('data-theme', theme);
+  try { localStorage.setItem(THEME_STORAGE_KEY, theme); } catch(e){ /* localStorage indisponível (ex: aba anônima) */ }
+}
+function toggleTheme(){
+  var current = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+  applyTheme(current === 'light' ? 'dark' : 'light');
+  renderSection(); // recria os gráficos pra pegar as cores do tema novo (Chart.js não escuta CSS var ao vivo)
+}
+(function initTheme(){
+  var saved = null;
+  try { saved = localStorage.getItem(THEME_STORAGE_KEY); } catch(e){ /* localStorage indisponível */ }
+  applyTheme(saved === 'light' ? 'light' : 'dark');
+})();
+
+/* ============================================================================
+   INIT
+   ============================================================================ */
+document.body.setAttribute('data-brand', STATE.brand);
+STATE.data[STATE.brand] = buildBrandData(BRANDS[STATE.brand]);
+renderBrandDock();
+initDockMagnify();
+updateSidebarLogo(BRANDS[STATE.brand]);
+renderNav(BRANDS[STATE.brand]);
+renderFilterPills();
+renderSection();
+</script>
+</body>
+</html>
