@@ -84,6 +84,11 @@ module.exports = async (req, res) => {
     return;
   }
 
+  // keywords/idade/gênero/dispositivo/hora só são usados na aba Mídia — Campanhas e Sazonais só
+  // precisam de campanhas/timeline. Pedir essas 4 queries GAQL extras em toda aba deixava tudo
+  // mais lento à toa; agora só rodam quando o front pede (?demographics=1).
+  const wantDemographics = req.query.demographics === '1' || req.query.demographics === 'true';
+
   try {
     const { start, end } = dateWindow(days, dateFrom, dateTo);
 
@@ -122,15 +127,15 @@ module.exports = async (req, res) => {
       const [dailyRows, keywordRows, ageRows, genderRows, deviceRows, hourRows] = await Promise.all([
         gaqlSearch('SELECT segments.date, metrics.cost_micros FROM campaign WHERE campaign.id IN (' + ids + ') AND ' + dateClause + ' ORDER BY segments.date'),
         // keyword_view só existe pra campanhas de Search — campanhas Display/Shopping/PMax da marca simplesmente não aparecem aqui (lista vazia, não é erro).
-        gaqlSearch(
+        wantDemographics ? gaqlSearch(
           'SELECT ad_group_criterion.keyword.text, metrics.impressions, metrics.clicks, metrics.cost_micros FROM keyword_view ' +
           'WHERE campaign.id IN (' + ids + ') AND ' + dateClause + ' LIMIT 500'
-        ).catch(() => []),
+        ).catch(() => []) : Promise.resolve([]),
         // age_range_view/gender_view/device/hour também só existem pra tipos de campanha com esse tipo de segmentação (Search/Display) — lista vazia é normal pra Shopping/PMax.
-        gaqlSearch('SELECT ad_group_criterion.age_range.type, metrics.clicks, metrics.impressions FROM age_range_view WHERE campaign.id IN (' + ids + ') AND ' + dateClause).catch(() => []),
-        gaqlSearch('SELECT ad_group_criterion.gender.type, metrics.clicks, metrics.impressions FROM gender_view WHERE campaign.id IN (' + ids + ') AND ' + dateClause).catch(() => []),
-        gaqlSearch('SELECT segments.device, metrics.clicks, metrics.impressions FROM campaign WHERE campaign.id IN (' + ids + ') AND ' + dateClause).catch(() => []),
-        gaqlSearch('SELECT segments.hour, metrics.clicks, metrics.impressions FROM campaign WHERE campaign.id IN (' + ids + ') AND ' + dateClause).catch(() => []),
+        wantDemographics ? gaqlSearch('SELECT ad_group_criterion.age_range.type, metrics.clicks, metrics.impressions FROM age_range_view WHERE campaign.id IN (' + ids + ') AND ' + dateClause).catch(() => []) : Promise.resolve([]),
+        wantDemographics ? gaqlSearch('SELECT ad_group_criterion.gender.type, metrics.clicks, metrics.impressions FROM gender_view WHERE campaign.id IN (' + ids + ') AND ' + dateClause).catch(() => []) : Promise.resolve([]),
+        wantDemographics ? gaqlSearch('SELECT segments.device, metrics.clicks, metrics.impressions FROM campaign WHERE campaign.id IN (' + ids + ') AND ' + dateClause).catch(() => []) : Promise.resolve([]),
+        wantDemographics ? gaqlSearch('SELECT segments.hour, metrics.clicks, metrics.impressions FROM campaign WHERE campaign.id IN (' + ids + ') AND ' + dateClause).catch(() => []) : Promise.resolve([]),
       ]);
       const dailyMap = {};
       dailyRows.forEach((r) => {

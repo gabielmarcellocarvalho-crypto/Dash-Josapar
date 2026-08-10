@@ -68,18 +68,26 @@ module.exports = async (req, res) => {
     return;
   }
 
+  // a aba Criativos precisa de dados por anúncio (thumbnail, dedup) — isso custa dezenas de
+  // chamadas extras à Graph API (uma por anúncio candidato). As outras abas (Mídia, Campanhas,
+  // Sazonais) usam o mesmo endpoint mas não mostram criativos, então esse trabalho pesado só
+  // roda quando o front pede explicitamente (?creatives=1), deixando as outras abas rápidas.
+  const wantCreatives = req.query.creatives === '1' || req.query.creatives === 'true';
+
   try {
     const tParam = timeParam(days, dateFrom, dateTo);
     const campaignFields = 'campaign_id,campaign_name,spend,impressions,clicks,ctr,cpc,reach,actions,action_values';
     const [campaignData, adData, ageGenderData, deviceData, hourData] = await Promise.all([
       fetchMeta('act_' + adAccount + '/insights', 'level=campaign&fields=' + campaignFields + '&' + tParam + '&limit=300'),
-      fetchMeta('act_' + adAccount + '/insights', 'level=ad&fields=ad_id,ad_name,campaign_name,ctr,clicks,impressions,reach,spend,actions&' + tParam + '&limit=300'),
+      wantCreatives
+        ? fetchMeta('act_' + adAccount + '/insights', 'level=ad&fields=ad_id,ad_name,campaign_name,ctr,clicks,impressions,reach,spend,actions&' + tParam + '&limit=300')
+        : Promise.resolve({ data: [] }),
       fetchMeta('act_' + adAccount + '/insights', 'level=campaign&fields=campaign_name,clicks,impressions,spend&breakdowns=age,gender&' + tParam + '&limit=300').catch(() => ({ data: [] })),
       fetchMeta('act_' + adAccount + '/insights', 'level=campaign&fields=campaign_name,clicks,impressions&breakdowns=device_platform&' + tParam + '&limit=300').catch(() => ({ data: [] })),
       fetchMeta('act_' + adAccount + '/insights', 'level=campaign&fields=campaign_name,clicks,impressions&breakdowns=hourly_stats_aggregated_by_advertiser_time_zone&' + tParam + '&limit=500').catch(() => ({ data: [] })),
     ]);
     const matched = (campaignData.data || []).filter((r) => matchesBrand(r.campaign_name, brand));
-    const matchedAds = (adData.data || []).filter((r) => matchesBrand(r.campaign_name, brand));
+    const matchedAds = wantCreatives ? (adData.data || []).filter((r) => matchesBrand(r.campaign_name, brand)) : [];
     const matchedAgeGender = (ageGenderData.data || []).filter((r) => matchesBrand(r.campaign_name, brand));
     const matchedDevice = (deviceData.data || []).filter((r) => matchesBrand(r.campaign_name, brand));
     const matchedHour = (hourData.data || []).filter((r) => matchesBrand(r.campaign_name, brand));
@@ -130,112 +138,117 @@ module.exports = async (req, res) => {
     });
     const hourly = Object.keys(hourMap).map((h) => hourMap[h]).sort((a, b) => a.hour - b.hour);
 
-    // ---- criativos (nível anúncio) — top CTR e top conversões, com thumbnail ----
-    // corta ruído por IMPRESSÕES (não cliques) — um anúncio de alcance/reconhecimento pode ter
-    // milhares de impressões e poucos cliques por natureza; filtrar por clique excluía esses da lista.
-    const adsWithMetrics = matchedAds.map((r) => ({
-      id: r.ad_id, name: r.ad_name, ctr: num(r.ctr), clicks: num(r.clicks), impressions: num(r.impressions),
-      reach: num(r.reach), engagement: sumActions(r.actions, ENGAGEMENT_ACTION_TYPES),
-      conversions: sumActions(r.actions, CONVERSION_ACTION_TYPES),
-    })).filter((a) => a.impressions >= 100);
+    // ---- criativos (nível anúncio) — top CTR/Alcance/Engajamento, com thumbnail ----
+    // só roda quando wantCreatives (aba Criativos) — é a parte cara do endpoint (uma chamada
+    // à Graph API por anúncio candidato, mais adimages e thumbnails de vídeo).
+    let creatives = { byCtr: [], byReach: [], byEngagement: [] };
+    if (wantCreatives) {
+      // corta ruído por IMPRESSÕES (não cliques) — um anúncio de alcance/reconhecimento pode ter
+      // milhares de impressões e poucos cliques por natureza; filtrar por clique excluía esses da lista.
+      const adsWithMetrics = matchedAds.map((r) => ({
+        id: r.ad_id, name: r.ad_name, ctr: num(r.ctr), clicks: num(r.clicks), impressions: num(r.impressions),
+        reach: num(r.reach), engagement: sumActions(r.actions, ENGAGEMENT_ACTION_TYPES),
+        conversions: sumActions(r.actions, CONVERSION_ACTION_TYPES),
+      })).filter((a) => a.impressions >= 100);
 
-    // Busca a peça (imagem/vídeo) dos candidatos primeiro — precisa disso pra poder agrupar
-    // duplicatas (mesma peça subida em vários anúncios) antes de rankear, senão o mesmo
-    // criativo repetido "rouba" as 5 vagas do ranking em vez de aparecer uma vez só.
-    // Limita o pool pelas maiores impressões pra não estourar rate limit da Graph API em
-    // marcas com muitos anúncios ativos — 1 chamada por anúncio candidato.
-    const creativeCandidates = adsWithMetrics.slice().sort((a, b) => b.impressions - a.impressions).slice(0, 120);
-    const thumbById = {};
-    const dedupKeyById = {};
-    if (creativeCandidates.length) {
-      // 3 formatos de criativo, 3 jeitos de achar a imagem em boa resolução:
-      // 1) imagem simples -> creative.image_url já vem em resolução real.
-      // 2) Advantage+/Formato automático -> não tem imagem única no creative, só um HASH em
-      //    asset_feed_spec.images; resolve via /adimages?hashes=[...] (devolve url real).
-      // 3) anúncio de vídeo -> sem image_url, só thumbnail_url, que por padrão vem cortado em
-      //    64x64; resolve pedindo thumbnail_url de novo direto no objeto creative com
-      //    thumbnail_width/height (só funciona como parâmetro top-level, não aninhado em ad->creative).
-      const creativeResults = await Promise.all(creativeCandidates.map((a) =>
-        fetchMeta(a.id, 'fields=creative%7Bid,image_url,image_hash,thumbnail_url,asset_feed_spec%7Bimages%7D%7D').catch(() => null)
-      ));
-      const hashByAdId = {};
-      const allHashes = new Set();
-      const videoCreativeByAdId = {}; // adId -> creative.id, pra rebuscar thumbnail_url em tamanho maior
-      creativeResults.forEach((r, i) => {
-        const adId = creativeCandidates[i].id;
-        const creative = r && r.creative;
-        if (!creative) return;
-        const afsImages = creative.asset_feed_spec && creative.asset_feed_spec.images;
-        // hash é baseado no conteúdo do arquivo — mesma imagem re-subida várias vezes gera o mesmo hash,
-        // por isso é a melhor chave pra detectar "mesmo criativo, uploads diferentes".
-        const hash = (afsImages && afsImages.length && afsImages[0].hash) || creative.image_hash;
-        if (hash) {
-          hashByAdId[adId] = hash;
-          allHashes.add(hash);
-          dedupKeyById[adId] = 'hash:' + hash;
-        } else if (creative.image_url) {
-          thumbById[adId] = creative.image_url;
-          dedupKeyById[adId] = 'url:' + creative.image_url;
-        } else if (creative.id) {
-          // vídeo (ou anúncio duplicado reaproveitando o mesmo objeto de criativo) — o id do
-          // criativo já é uma chave estável entre anúncios que compartilham a mesma peça.
-          videoCreativeByAdId[adId] = creative.id;
-          dedupKeyById[adId] = 'creative:' + creative.id;
+      // Busca a peça (imagem/vídeo) dos candidatos primeiro — precisa disso pra poder agrupar
+      // duplicatas (mesma peça subida em vários anúncios) antes de rankear, senão o mesmo
+      // criativo repetido "rouba" as 5 vagas do ranking em vez de aparecer uma vez só.
+      // Limita o pool pelas maiores impressões pra não estourar rate limit da Graph API em
+      // marcas com muitos anúncios ativos — 1 chamada por anúncio candidato.
+      const creativeCandidates = adsWithMetrics.slice().sort((a, b) => b.impressions - a.impressions).slice(0, 120);
+      const thumbById = {};
+      const dedupKeyById = {};
+      if (creativeCandidates.length) {
+        // 3 formatos de criativo, 3 jeitos de achar a imagem em boa resolução:
+        // 1) imagem simples -> creative.image_url já vem em resolução real.
+        // 2) Advantage+/Formato automático -> não tem imagem única no creative, só um HASH em
+        //    asset_feed_spec.images; resolve via /adimages?hashes=[...] (devolve url real).
+        // 3) anúncio de vídeo -> sem image_url, só thumbnail_url, que por padrão vem cortado em
+        //    64x64; resolve pedindo thumbnail_url de novo direto no objeto creative com
+        //    thumbnail_width/height (só funciona como parâmetro top-level, não aninhado em ad->creative).
+        const creativeResults = await Promise.all(creativeCandidates.map((a) =>
+          fetchMeta(a.id, 'fields=creative%7Bid,image_url,image_hash,thumbnail_url,asset_feed_spec%7Bimages%7D%7D').catch(() => null)
+        ));
+        const hashByAdId = {};
+        const allHashes = new Set();
+        const videoCreativeByAdId = {}; // adId -> creative.id, pra rebuscar thumbnail_url em tamanho maior
+        creativeResults.forEach((r, i) => {
+          const adId = creativeCandidates[i].id;
+          const creative = r && r.creative;
+          if (!creative) return;
+          const afsImages = creative.asset_feed_spec && creative.asset_feed_spec.images;
+          // hash é baseado no conteúdo do arquivo — mesma imagem re-subida várias vezes gera o mesmo hash,
+          // por isso é a melhor chave pra detectar "mesmo criativo, uploads diferentes".
+          const hash = (afsImages && afsImages.length && afsImages[0].hash) || creative.image_hash;
+          if (hash) {
+            hashByAdId[adId] = hash;
+            allHashes.add(hash);
+            dedupKeyById[adId] = 'hash:' + hash;
+          } else if (creative.image_url) {
+            thumbById[adId] = creative.image_url;
+            dedupKeyById[adId] = 'url:' + creative.image_url;
+          } else if (creative.id) {
+            // vídeo (ou anúncio duplicado reaproveitando o mesmo objeto de criativo) — o id do
+            // criativo já é uma chave estável entre anúncios que compartilham a mesma peça.
+            videoCreativeByAdId[adId] = creative.id;
+            dedupKeyById[adId] = 'creative:' + creative.id;
+          }
+        });
+        if (allHashes.size) {
+          const hashList = Array.from(allHashes);
+          const adImagesData = await fetchMeta(
+            'act_' + adAccount + '/adimages',
+            'hashes=' + encodeURIComponent(JSON.stringify(hashList)) + '&fields=hash,url'
+          ).catch(() => ({ data: [] }));
+          const urlByHash = {};
+          (adImagesData.data || []).forEach((img) => { urlByHash[img.hash] = img.url; });
+          Object.keys(hashByAdId).forEach((adId) => { thumbById[adId] = urlByHash[hashByAdId[adId]] || null; });
+        }
+        const videoAdIds = Object.keys(videoCreativeByAdId);
+        if (videoAdIds.length) {
+          const resizedResults = await Promise.all(videoAdIds.map((adId) =>
+            fetchMeta(videoCreativeByAdId[adId], 'fields=thumbnail_url&thumbnail_width=1080&thumbnail_height=1080').catch(() => null)
+          ));
+          resizedResults.forEach((r, i) => { thumbById[videoAdIds[i]] = (r && r.thumbnail_url) || null; });
+        }
+      }
+
+      // Agrupa anúncios que usam a mesma peça e soma as métricas do grupo — o ranking passa a
+      // refletir a performance real do criativo (não de um upload duplicado dele isoladamente),
+      // e cada peça aparece uma única vez no ranking. adCount (no front) mostra quantos anúncios
+      // foram somados nesse grupo.
+      const groupsByKey = {};
+      adsWithMetrics.forEach((a) => {
+        const key = dedupKeyById[a.id] || ('ad:' + a.id);
+        if (!groupsByKey[key]) {
+          groupsByKey[key] = {
+            id: a.id, name: a.name, thumbnail: thumbById[a.id] || null, repImpressions: -1,
+            impressions: 0, clicks: 0, reach: 0, engagement: 0, conversions: 0, adCount: 0,
+          };
+        }
+        const g = groupsByKey[key];
+        g.impressions += a.impressions; g.clicks += a.clicks; g.reach += a.reach;
+        g.engagement += a.engagement; g.conversions += a.conversions; g.adCount += 1;
+        // representante do grupo (nome/thumbnail exibidos) = anúncio com mais impressões nele
+        if (a.impressions >= g.repImpressions) {
+          g.repImpressions = a.impressions;
+          g.id = a.id; g.name = a.name; g.thumbnail = thumbById[a.id] || g.thumbnail;
         }
       });
-      if (allHashes.size) {
-        const hashList = Array.from(allHashes);
-        const adImagesData = await fetchMeta(
-          'act_' + adAccount + '/adimages',
-          'hashes=' + encodeURIComponent(JSON.stringify(hashList)) + '&fields=hash,url'
-        ).catch(() => ({ data: [] }));
-        const urlByHash = {};
-        (adImagesData.data || []).forEach((img) => { urlByHash[img.hash] = img.url; });
-        Object.keys(hashByAdId).forEach((adId) => { thumbById[adId] = urlByHash[hashByAdId[adId]] || null; });
-      }
-      const videoAdIds = Object.keys(videoCreativeByAdId);
-      if (videoAdIds.length) {
-        const resizedResults = await Promise.all(videoAdIds.map((adId) =>
-          fetchMeta(videoCreativeByAdId[adId], 'fields=thumbnail_url&thumbnail_width=1080&thumbnail_height=1080').catch(() => null)
-        ));
-        resizedResults.forEach((r, i) => { thumbById[videoAdIds[i]] = (r && r.thumbnail_url) || null; });
-      }
+      const dedupedCreatives = Object.values(groupsByKey).map((g) => ({
+        id: g.id, name: g.name, thumbnail: g.thumbnail, adCount: g.adCount,
+        ctr: g.impressions > 0 ? (g.clicks / g.impressions) * 100 : 0,
+        reach: g.reach, engagement: g.engagement, conversions: g.conversions,
+      }));
+      const pick = ({ id, name, ctr, conversions, reach, engagement, thumbnail, adCount }) =>
+        ({ id, name, ctr, conversions, reach, engagement, thumbnail, adCount });
+      creatives = {
+        byCtr: dedupedCreatives.slice().sort((a, b) => b.ctr - a.ctr).slice(0, 3).map(pick),
+        byReach: dedupedCreatives.slice().sort((a, b) => b.reach - a.reach).slice(0, 3).map(pick),
+        byEngagement: dedupedCreatives.slice().sort((a, b) => b.engagement - a.engagement).slice(0, 3).map(pick),
+      };
     }
-
-    // Agrupa anúncios que usam a mesma peça e soma as métricas do grupo — o ranking passa a
-    // refletir a performance real do criativo (não de um upload duplicado dele isoladamente),
-    // e cada peça aparece uma única vez no ranking. adCount (no front) mostra quantos anúncios
-    // foram somados nesse grupo.
-    const groupsByKey = {};
-    adsWithMetrics.forEach((a) => {
-      const key = dedupKeyById[a.id] || ('ad:' + a.id);
-      if (!groupsByKey[key]) {
-        groupsByKey[key] = {
-          id: a.id, name: a.name, thumbnail: thumbById[a.id] || null, repImpressions: -1,
-          impressions: 0, clicks: 0, reach: 0, engagement: 0, conversions: 0, adCount: 0,
-        };
-      }
-      const g = groupsByKey[key];
-      g.impressions += a.impressions; g.clicks += a.clicks; g.reach += a.reach;
-      g.engagement += a.engagement; g.conversions += a.conversions; g.adCount += 1;
-      // representante do grupo (nome/thumbnail exibidos) = anúncio com mais impressões nele
-      if (a.impressions >= g.repImpressions) {
-        g.repImpressions = a.impressions;
-        g.id = a.id; g.name = a.name; g.thumbnail = thumbById[a.id] || g.thumbnail;
-      }
-    });
-    const dedupedCreatives = Object.values(groupsByKey).map((g) => ({
-      id: g.id, name: g.name, thumbnail: g.thumbnail, adCount: g.adCount,
-      ctr: g.impressions > 0 ? (g.clicks / g.impressions) * 100 : 0,
-      reach: g.reach, engagement: g.engagement, conversions: g.conversions,
-    }));
-    const pick = ({ id, name, ctr, conversions, reach, engagement, thumbnail, adCount }) =>
-      ({ id, name, ctr, conversions, reach, engagement, thumbnail, adCount });
-    const creatives = {
-      byCtr: dedupedCreatives.slice().sort((a, b) => b.ctr - a.ctr).slice(0, 3).map(pick),
-      byReach: dedupedCreatives.slice().sort((a, b) => b.reach - a.reach).slice(0, 3).map(pick),
-      byEngagement: dedupedCreatives.slice().sort((a, b) => b.engagement - a.engagement).slice(0, 3).map(pick),
-    };
 
     let timeline = { labels: [], values: [] };
     if (matched.length) {

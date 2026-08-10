@@ -1381,9 +1381,13 @@ function loadRealMediaIfAvailable(brandId, days){
   setMediaLoading(true);
   setCreativeGridsLoading(true);
   var qs = rangeQueryString(days);
+  // ?creatives=1 só na aba Criativos — evita o endpoint fazer a busca cara de thumbnail/dedup
+  // (uma chamada extra por anúncio) toda vez que a aba Mídia só precisa de KPIs/demografia.
+  var metaQs = qs + (isCriativos ? '&creatives=1' : '');
   Promise.all([
-    wantMeta ? fetch('/api/meta?brand='+brandId+'&'+qs).then(function(r){ return r.ok ? r.json() : null; }).catch(function(){ return null; }) : Promise.resolve(null),
-    wantGoogle ? fetch('/api/googleads?brand='+brandId+'&'+qs).then(function(r){ return r.ok ? r.json() : null; }).catch(function(){ return null; }) : Promise.resolve(null),
+    wantMeta ? fetch('/api/meta?brand='+brandId+'&'+metaQs).then(function(r){ return r.ok ? r.json() : null; }).catch(function(){ return null; }) : Promise.resolve(null),
+    // wantGoogle só é true na aba Mídia (isCriativos exclui) — é onde keywords/idade/gênero/dispositivo/hora aparecem.
+    wantGoogle ? fetch('/api/googleads?brand='+brandId+'&'+qs+'&demographics=1').then(function(r){ return r.ok ? r.json() : null; }).catch(function(){ return null; }) : Promise.resolve(null),
   ]).then(function(results){
     if(STATE.brand!==requestBrand || STATE.section!==requestSection || STATE.platform!==requestPlatform) return;
     setMediaLoading(false);
