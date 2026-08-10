@@ -33,15 +33,6 @@ function sumActions(actions, types) {
   return actions.reduce((total, a) => (types.indexOf(a.action_type) !== -1 ? total + num(a.value) : total), 0);
 }
 
-// classificação de formato do criativo pro filtro Feed/Stories da aba Criativos — pelo NOME do
-// anúncio, confirmado como confiável: a equipe de mídia sempre marca "Story"/"Stories"/"Reels" no
-// nome quando é esse o formato. Classificação binária e exclusiva (nunca os dois, nunca nenhum) —
-// se o nome não disser "story", o anúncio é Feed. Isso evita um anúncio aparecer nos dois filtros.
-const STORY_NAME_RE = /stor(y|ies)|reels?/i;
-function classifyPlacement(name) {
-  return STORY_NAME_RE.test(name || '') ? 'story' : 'feed';
-}
-
 function timeParam(days, dateFrom, dateTo) {
   if (dateFrom && dateTo) return 'time_range=' + encodeURIComponent(JSON.stringify({ since: dateFrom, until: dateTo }));
   const preset = days <= 7 ? 'last_7d' : days <= 30 ? 'last_30d' : 'last_90d';
@@ -146,7 +137,6 @@ module.exports = async (req, res) => {
       id: r.ad_id, name: r.ad_name, ctr: num(r.ctr), clicks: num(r.clicks), impressions: num(r.impressions),
       reach: num(r.reach), engagement: sumActions(r.actions, ENGAGEMENT_ACTION_TYPES),
       conversions: sumActions(r.actions, CONVERSION_ACTION_TYPES),
-      placements: [classifyPlacement(r.ad_name)],
     })).filter((a) => a.impressions >= 100);
 
     // Busca a peça (imagem/vídeo) dos candidatos primeiro — precisa disso pra poder agrupar
@@ -214,21 +204,20 @@ module.exports = async (req, res) => {
 
     // Agrupa anúncios que usam a mesma peça e soma as métricas do grupo — o ranking passa a
     // refletir a performance real do criativo (não de um upload duplicado dele isoladamente),
-    // e cada peça aparece uma única vez no ranking. placements é a união das tags (feed/story)
-    // de todos os anúncios do grupo, pro filtro da aba Criativos.
+    // e cada peça aparece uma única vez no ranking. adCount (no front) mostra quantos anúncios
+    // foram somados nesse grupo.
     const groupsByKey = {};
     adsWithMetrics.forEach((a) => {
       const key = dedupKeyById[a.id] || ('ad:' + a.id);
       if (!groupsByKey[key]) {
         groupsByKey[key] = {
           id: a.id, name: a.name, thumbnail: thumbById[a.id] || null, repImpressions: -1,
-          impressions: 0, clicks: 0, reach: 0, engagement: 0, conversions: 0, adCount: 0, placements: new Set(),
+          impressions: 0, clicks: 0, reach: 0, engagement: 0, conversions: 0, adCount: 0,
         };
       }
       const g = groupsByKey[key];
       g.impressions += a.impressions; g.clicks += a.clicks; g.reach += a.reach;
       g.engagement += a.engagement; g.conversions += a.conversions; g.adCount += 1;
-      a.placements.forEach((p) => g.placements.add(p));
       // representante do grupo (nome/thumbnail exibidos) = anúncio com mais impressões nele
       if (a.impressions >= g.repImpressions) {
         g.repImpressions = a.impressions;
@@ -236,18 +225,16 @@ module.exports = async (req, res) => {
       }
     });
     const dedupedCreatives = Object.values(groupsByKey).map((g) => ({
-      id: g.id, name: g.name, thumbnail: g.thumbnail, adCount: g.adCount, placements: Array.from(g.placements),
+      id: g.id, name: g.name, thumbnail: g.thumbnail, adCount: g.adCount,
       ctr: g.impressions > 0 ? (g.clicks / g.impressions) * 100 : 0,
       reach: g.reach, engagement: g.engagement, conversions: g.conversions,
     }));
-    // Não corta em "top N" aqui — devolve um pool maior já ordenado; o front filtra por
-    // posicionamento (Todos/Feed/Stories) e só então corta pros 3 melhores do filtro atual.
-    const pick = ({ id, name, ctr, conversions, reach, engagement, thumbnail, adCount, placements }) =>
-      ({ id, name, ctr, conversions, reach, engagement, thumbnail, adCount, placements });
+    const pick = ({ id, name, ctr, conversions, reach, engagement, thumbnail, adCount }) =>
+      ({ id, name, ctr, conversions, reach, engagement, thumbnail, adCount });
     const creatives = {
-      byCtr: dedupedCreatives.slice().sort((a, b) => b.ctr - a.ctr).slice(0, 30).map(pick),
-      byReach: dedupedCreatives.slice().sort((a, b) => b.reach - a.reach).slice(0, 30).map(pick),
-      byEngagement: dedupedCreatives.slice().sort((a, b) => b.engagement - a.engagement).slice(0, 30).map(pick),
+      byCtr: dedupedCreatives.slice().sort((a, b) => b.ctr - a.ctr).slice(0, 3).map(pick),
+      byReach: dedupedCreatives.slice().sort((a, b) => b.reach - a.reach).slice(0, 3).map(pick),
+      byEngagement: dedupedCreatives.slice().sort((a, b) => b.engagement - a.engagement).slice(0, 3).map(pick),
     };
 
     let timeline = { labels: [], values: [] };

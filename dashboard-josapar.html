@@ -602,16 +602,10 @@ function buildBrandData(brand){
     campaigns.sort(function(a,b){ return b.conv - a.conv; });
   }
 
-  // gera um pool maior que 3 (já ordenado do melhor pro pior) — o filtro de posicionamento
-  // corta pra Top 3 DEPOIS de filtrar por feed/story, senão sobra pouca coisa quando filtrado.
-  var CREATIVE_PLACEMENT_CYCLE = [['feed'],['story'],['feed','story']];
   function creativeSet(labelPool, metricLabel, metricGen){
     var items = [];
-    for(var i=0;i<8;i++){
-      items.push({
-        name: labelPool[i % labelPool.length] + ' — v' + (i+1), metric: metricGen(rng, i), metricLabel: metricLabel,
-        placements: CREATIVE_PLACEMENT_CYCLE[i % CREATIVE_PLACEMENT_CYCLE.length], adCount: 1,
-      });
+    for(var i=0;i<3;i++){
+      items.push({ name: labelPool[i % labelPool.length] + ' — v' + (i+1), metric: metricGen(rng, i), metricLabel: metricLabel, adCount: 1 });
     }
     return items;
   }
@@ -1159,24 +1153,9 @@ function creativeCards(items){
       '<div class="creative-info"><div class="creative-name-row"><div class="creative-name">'+it.name+'</div>'+dupBadge+'</div><div class="creative-metric">'+it.metricLabel+': '+it.metric+'</div></div></div>';
   }).join('');
 }
-// pool (mock ou real) atualmente disponível pra aba Criativos — REAL_CREATIVES some quando troca de marca/aba
-function creativePool(){ return REAL_CREATIVES || STATE.data[STATE.brand].creatives; }
-function creativeFilterList(list, placement){
-  return (list || []).filter(function(it){
-    return placement === 'all' || (it.placements && it.placements.indexOf(placement) !== -1);
-  }).slice(0, 3);
-}
-function renderCreativeGrid(elId, list, placement){
+function renderCreativeGrid(elId, list){
   var el = document.getElementById(elId);
-  if(el) el.innerHTML = creativeCards(creativeFilterList(list, placement));
-}
-function filterCreatives(placement, btn){
-  document.querySelectorAll('#creative-placement-pills .pp').forEach(function(p){ p.classList.remove('active'); });
-  if(btn) btn.classList.add('active');
-  var c = creativePool();
-  renderCreativeGrid('creative-grid-ctr', c.byCtr, placement);
-  renderCreativeGrid('creative-grid-reach', c.byReach, placement);
-  renderCreativeGrid('creative-grid-engagement', c.byEngagement, placement);
+  if(el) el.innerHTML = creativeCards((list || []).slice(0, 3));
 }
 function sectionCriativos(b){
   REAL_CREATIVES = null; // toda troca de marca/aba volta a mostrar mock até o fetch real responder
@@ -1184,15 +1163,10 @@ function sectionCriativos(b){
   var blocks = ''+
     '<div class="section-heading">'+
       '<div><h2>Top 3 criativos por métrica</h2><p>Peças duplicadas (mesmo criativo subido mais de uma vez) são agrupadas — o selo ×N mostra quantos anúncios foram somados</p></div>'+
-      '<div class="pillrow" id="creative-placement-pills">'+
-        '<button class="pp active" data-placement="all" onclick="filterCreatives(\'all\', this)">Todos</button>'+
-        '<button class="pp" data-placement="feed" onclick="filterCreatives(\'feed\', this)">Feed</button>'+
-        '<button class="pp" data-placement="story" onclick="filterCreatives(\'story\', this)">Stories</button>'+
-      '</div>'+
     '</div>';
-  blocks += '<div class="creative-block"><div class="creative-block-title">'+iconSvg(ICONS.ctr)+'Top 3 Criativos por CTR<span id="creatives-badge" class="kpi-source" style="margin-left:8px;">mídia (mock)</span></div><div class="creative-grid" id="creative-grid-ctr">'+creativeCards(creativeFilterList(c.byCtr,'all'))+'</div></div>';
-  blocks += '<div class="creative-block"><div class="creative-block-title">'+iconSvg(ICONS.reach)+'Top 3 Criativos por Alcance</div><div class="creative-grid" id="creative-grid-reach">'+creativeCards(creativeFilterList(c.byReach,'all'))+'</div></div>';
-  blocks += '<div class="creative-block"><div class="creative-block-title">'+iconSvg(ICONS.engagement)+'Top 3 Criativos por Engajamento</div><div class="creative-grid" id="creative-grid-engagement">'+creativeCards(creativeFilterList(c.byEngagement,'all'))+'</div></div>';
+  blocks += '<div class="creative-block"><div class="creative-block-title">'+iconSvg(ICONS.ctr)+'Top 3 Criativos por CTR<span id="creatives-badge" class="kpi-source" style="margin-left:8px;">mídia (mock)</span></div><div class="creative-grid" id="creative-grid-ctr">'+creativeCards(c.byCtr.slice(0,3))+'</div></div>';
+  blocks += '<div class="creative-block"><div class="creative-block-title">'+iconSvg(ICONS.reach)+'Top 3 Criativos por Alcance</div><div class="creative-grid" id="creative-grid-reach">'+creativeCards(c.byReach.slice(0,3))+'</div></div>';
+  blocks += '<div class="creative-block"><div class="creative-block-title">'+iconSvg(ICONS.engagement)+'Top 3 Criativos por Engajamento</div><div class="creative-grid" id="creative-grid-engagement">'+creativeCards(c.byEngagement.slice(0,3))+'</div></div>';
   return blocks;
 }
 
@@ -1497,19 +1471,18 @@ function loadRealMediaIfAvailable(brandId, days){
     if(metaOk && meta.creatives && document.getElementById('creative-grid-ctr')){
       REAL_CREATIVES = {
         byCtr: (meta.creatives.byCtr || []).map(function(c){
-          return { name:c.name, metric:fmtPct(c.ctr,2), metricLabel:'CTR', thumbnail:c.thumbnail, adCount:c.adCount, placements:c.placements };
+          return { name:c.name, metric:fmtPct(c.ctr,2), metricLabel:'CTR', thumbnail:c.thumbnail, adCount:c.adCount };
         }),
         byReach: (meta.creatives.byReach || []).map(function(c){
-          return { name:c.name, metric:fmtNum(c.reach), metricLabel:'Alcance', thumbnail:c.thumbnail, adCount:c.adCount, placements:c.placements };
+          return { name:c.name, metric:fmtNum(c.reach), metricLabel:'Alcance', thumbnail:c.thumbnail, adCount:c.adCount };
         }),
         byEngagement: (meta.creatives.byEngagement || []).map(function(c){
-          return { name:c.name, metric:fmtNum(c.engagement), metricLabel:'Engajamento', thumbnail:c.thumbnail, adCount:c.adCount, placements:c.placements };
+          return { name:c.name, metric:fmtNum(c.engagement), metricLabel:'Engajamento', thumbnail:c.thumbnail, adCount:c.adCount };
         }),
       };
-      var activePlacementBtn = document.querySelector('#creative-placement-pills .pp.active');
-      renderCreativeGrid('creative-grid-ctr', REAL_CREATIVES.byCtr, activePlacementBtn ? (activePlacementBtn.getAttribute('data-placement') || 'all') : 'all');
-      renderCreativeGrid('creative-grid-reach', REAL_CREATIVES.byReach, activePlacementBtn ? (activePlacementBtn.getAttribute('data-placement') || 'all') : 'all');
-      renderCreativeGrid('creative-grid-engagement', REAL_CREATIVES.byEngagement, activePlacementBtn ? (activePlacementBtn.getAttribute('data-placement') || 'all') : 'all');
+      renderCreativeGrid('creative-grid-ctr', REAL_CREATIVES.byCtr);
+      renderCreativeGrid('creative-grid-reach', REAL_CREATIVES.byReach);
+      renderCreativeGrid('creative-grid-engagement', REAL_CREATIVES.byEngagement);
       if(creativesBadge){ creativesBadge.textContent = 'Meta Ads · real'; creativesBadge.style.color = 'var(--success)'; creativesBadge.style.borderColor = 'rgba(61,220,132,0.3)'; }
     }
 
