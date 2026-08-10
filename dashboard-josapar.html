@@ -307,10 +307,8 @@
   .roas-good{ color:var(--success); font-weight:700; }
   .roas-bad{ color:var(--danger); font-weight:700; }
 
-  /* Creatives */
-  .creative-grid{ display:grid; grid-template-columns:repeat(5,1fr); gap:12px; position:relative; min-height:120px; }
-  @media (max-width:1300px){ .creative-grid{ grid-template-columns:repeat(3,1fr); } }
-  @media (max-width:700px){ .creative-grid{ grid-template-columns:repeat(2,1fr); } }
+  /* Creatives — flex centralizado (máx. 3 cards; centraliza também quando o filtro deixa 1 ou 2) */
+  .creative-grid{ display:flex; flex-wrap:wrap; justify-content:center; gap:12px; position:relative; min-height:120px; }
   .creative-grid.is-loading > .creative-card{ visibility:hidden; }
   .creative-grid.is-loading::after{
     content:''; position:absolute; inset:0; border-radius:var(--radius); pointer-events:none;
@@ -320,7 +318,9 @@
   .creative-card{
     background:var(--card-bg); border:1px solid var(--border); border-radius:var(--radius);
     overflow:hidden; display:flex; flex-direction:column; transition:border-color 160ms ease;
+    flex:1 1 220px; max-width:260px;
   }
+  @media (max-width:520px){ .creative-card{ flex-basis:100%; max-width:320px; } }
   .creative-card:hover{ border-color:var(--border-strong); }
   .creative-thumb{
     aspect-ratio:4/5; background:

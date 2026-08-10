@@ -33,6 +33,28 @@ function sumActions(actions, types) {
   return actions.reduce((total, a) => (types.indexOf(a.action_type) !== -1 ? total + num(a.value) : total), 0);
 }
 
+// classificação de formato do criativo pro filtro Feed/Stories da aba Criativos.
+// Não usamos o breakdown de entrega (publisher_platform/platform_position) porque em posicionamento
+// automático o MESMO anúncio recebe impressões em feed e em stories ao mesmo tempo — isso fazia um
+// criativo vertical (formato Stories) aparecer também no filtro Feed. Em vez disso, classificamos
+// pelo NOME do anúncio (convenção de nomenclatura da equipe de mídia) e, se o nome não disser nada,
+// pela PROPORÇÃO da imagem (vertical = Stories/Reels, quadrada/paisagem = Feed).
+const STORY_NAME_RE = /stor(y|ies)|reels?/i;
+const FEED_NAME_RE = /\bfeed\b|\bpost\b|\bcarross?el\b|\bcarousel\b/i;
+function classifyByName(name) {
+  if (!name) return null;
+  if (STORY_NAME_RE.test(name)) return 'story';
+  if (FEED_NAME_RE.test(name)) return 'feed';
+  return null;
+}
+function classifyByAspect(width, height) {
+  if (!width || !height) return null;
+  const ratio = height / width;
+  if (ratio >= 1.4) return 'story'; // vertical — 9:16 ≈ 1.78
+  if (ratio <= 1.15) return 'feed'; // quadrada (1:1) ou paisagem
+  return null; // zona cinza (ex.: 4:5 ≈ 1.25) — melhor não chutar, fica sem tag (só aparece em "Todos")
+}
+
 function timeParam(days, dateFrom, dateTo) {
   if (dateFrom && dateTo) return 'time_range=' + encodeURIComponent(JSON.stringify({ since: dateFrom, until: dateTo }));
   const preset = days <= 7 ? 'last_7d' : days <= 30 ? 'last_30d' : 'last_90d';
@@ -71,32 +93,18 @@ module.exports = async (req, res) => {
   try {
     const tParam = timeParam(days, dateFrom, dateTo);
     const campaignFields = 'campaign_id,campaign_name,spend,impressions,clicks,ctr,cpc,reach,actions,action_values';
-    const [campaignData, adData, ageGenderData, deviceData, hourData, placementData] = await Promise.all([
+    const [campaignData, adData, ageGenderData, deviceData, hourData] = await Promise.all([
       fetchMeta('act_' + adAccount + '/insights', 'level=campaign&fields=' + campaignFields + '&' + tParam + '&limit=300'),
       fetchMeta('act_' + adAccount + '/insights', 'level=ad&fields=ad_id,ad_name,campaign_name,ctr,clicks,impressions,reach,spend,actions&' + tParam + '&limit=300'),
       fetchMeta('act_' + adAccount + '/insights', 'level=campaign&fields=campaign_name,clicks,impressions,spend&breakdowns=age,gender&' + tParam + '&limit=300').catch(() => ({ data: [] })),
       fetchMeta('act_' + adAccount + '/insights', 'level=campaign&fields=campaign_name,clicks,impressions&breakdowns=device_platform&' + tParam + '&limit=300').catch(() => ({ data: [] })),
       fetchMeta('act_' + adAccount + '/insights', 'level=campaign&fields=campaign_name,clicks,impressions&breakdowns=hourly_stats_aggregated_by_advertiser_time_zone&' + tParam + '&limit=500').catch(() => ({ data: [] })),
-      // posicionamento por anúncio (feed/story/reels/...) — usado pra filtrar a aba Criativos
-      fetchMeta('act_' + adAccount + '/insights', 'level=ad&fields=ad_id,campaign_name,impressions&breakdowns=publisher_platform,platform_position&' + tParam + '&limit=1000').catch(() => ({ data: [] })),
     ]);
     const matched = (campaignData.data || []).filter((r) => matchesBrand(r.campaign_name, brand));
     const matchedAds = (adData.data || []).filter((r) => matchesBrand(r.campaign_name, brand));
     const matchedAgeGender = (ageGenderData.data || []).filter((r) => matchesBrand(r.campaign_name, brand));
     const matchedDevice = (deviceData.data || []).filter((r) => matchesBrand(r.campaign_name, brand));
     const matchedHour = (hourData.data || []).filter((r) => matchesBrand(r.campaign_name, brand));
-    const matchedPlacement = (placementData.data || []).filter((r) => matchesBrand(r.campaign_name, brand));
-
-    // 'feed' e 'story' viram tag pro filtro da aba Criativos; reels e outros posicionamentos
-    // (marketplace, audience network, in-stream etc.) não recebem tag — só aparecem em "Todos".
-    const placementTagsByAdId = {};
-    matchedPlacement.forEach((r) => {
-      if (num(r.impressions) <= 0) return;
-      const pos = r.platform_position;
-      if (pos !== 'feed' && pos !== 'story') return;
-      if (!placementTagsByAdId[r.ad_id]) placementTagsByAdId[r.ad_id] = new Set();
-      placementTagsByAdId[r.ad_id].add(pos);
-    });
 
     let spend = 0, impressions = 0, clicks = 0, reach = 0, conversions = 0, revenue = 0, engagement = 0;
     const campaigns = matched.map((r) => {
@@ -151,8 +159,16 @@ module.exports = async (req, res) => {
       id: r.ad_id, name: r.ad_name, ctr: num(r.ctr), clicks: num(r.clicks), impressions: num(r.impressions),
       reach: num(r.reach), engagement: sumActions(r.actions, ENGAGEMENT_ACTION_TYPES),
       conversions: sumActions(r.actions, CONVERSION_ACTION_TYPES),
-      placements: Array.from(placementTagsByAdId[r.ad_id] || []),
     })).filter((a) => a.impressions >= 100);
+
+    // formato (feed/story) por anúncio — nome primeiro, proporção da imagem como fallback (ver
+    // classifyByName/classifyByAspect acima). Preenchido pelo nome já pra todo mundo aqui; a parte
+    // por proporção só dá pra completar depois de buscar a peça (bloco de thumbnails abaixo).
+    const formatTagByAdId = {};
+    adsWithMetrics.forEach((a) => {
+      const tag = classifyByName(a.name);
+      if (tag) formatTagByAdId[a.id] = tag;
+    });
 
     // Busca a peça (imagem/vídeo) dos candidatos primeiro — precisa disso pra poder agrupar
     // duplicatas (mesma peça subida em vários anúncios) antes de rankear, senão o mesmo
@@ -202,11 +218,20 @@ module.exports = async (req, res) => {
         const hashList = Array.from(allHashes);
         const adImagesData = await fetchMeta(
           'act_' + adAccount + '/adimages',
-          'hashes=' + encodeURIComponent(JSON.stringify(hashList)) + '&fields=hash,url'
+          'hashes=' + encodeURIComponent(JSON.stringify(hashList)) + '&fields=hash,url,width,height'
         ).catch(() => ({ data: [] }));
         const urlByHash = {};
-        (adImagesData.data || []).forEach((img) => { urlByHash[img.hash] = img.url; });
-        Object.keys(hashByAdId).forEach((adId) => { thumbById[adId] = urlByHash[hashByAdId[adId]] || null; });
+        const dimsByHash = {};
+        (adImagesData.data || []).forEach((img) => { urlByHash[img.hash] = img.url; dimsByHash[img.hash] = { width: num(img.width), height: num(img.height) }; });
+        Object.keys(hashByAdId).forEach((adId) => {
+          thumbById[adId] = urlByHash[hashByAdId[adId]] || null;
+          // se o nome não classificou o formato, tenta pela proporção real da imagem
+          if (!formatTagByAdId[adId]) {
+            const dims = dimsByHash[hashByAdId[adId]];
+            const aspectTag = dims && classifyByAspect(dims.width, dims.height);
+            if (aspectTag) formatTagByAdId[adId] = aspectTag;
+          }
+        });
       }
       const videoAdIds = Object.keys(videoCreativeByAdId);
       if (videoAdIds.length) {
@@ -216,6 +241,8 @@ module.exports = async (req, res) => {
         resizedResults.forEach((r, i) => { thumbById[videoAdIds[i]] = (r && r.thumbnail_url) || null; });
       }
     }
+    // aplica a classificação final (nome, e proporção como fallback pra imagens) em cada anúncio
+    adsWithMetrics.forEach((a) => { a.placements = formatTagByAdId[a.id] ? [formatTagByAdId[a.id]] : []; });
 
     // Agrupa anúncios que usam a mesma peça e soma as métricas do grupo — o ranking passa a
     // refletir a performance real do criativo (não de um upload duplicado dele isoladamente),
