@@ -33,29 +33,13 @@ function sumActions(actions, types) {
   return actions.reduce((total, a) => (types.indexOf(a.action_type) !== -1 ? total + num(a.value) : total), 0);
 }
 
-// classificação de formato do criativo pro filtro Feed/Stories da aba Criativos.
-// Não usamos o breakdown de entrega (publisher_platform/platform_position) porque em posicionamento
-// automático o MESMO anúncio recebe impressões em feed e em stories ao mesmo tempo. E não usamos o
-// NOME do anúncio como sinal principal — na prática um anúncio Advantage+ costuma ter "Feed" e
-// "Story" juntos no nome (é o MESMO anúncio otimizado pros dois formatos), o que fazia a regex de
-// Stories vencer sempre e classificar tudo como Stories mesmo quando a peça exibida era quadrada/feed.
-// Sinal principal agora é a PROPORÇÃO REAL da(s) imagem(ns) do anúncio — vertical (9:16) = Stories,
-// quadrada/paisagem = Feed; se o anúncio tiver as duas variações (comum em Advantage+), ele entra nos
-// dois filtros. Nome só é usado quando não há nenhuma dimensão de imagem disponível (ex.: vídeo).
+// classificação de formato do criativo pro filtro Feed/Stories da aba Criativos — pelo NOME do
+// anúncio, confirmado como confiável: a equipe de mídia sempre marca "Story"/"Stories"/"Reels" no
+// nome quando é esse o formato. Classificação binária e exclusiva (nunca os dois, nunca nenhum) —
+// se o nome não disser "story", o anúncio é Feed. Isso evita um anúncio aparecer nos dois filtros.
 const STORY_NAME_RE = /stor(y|ies)|reels?/i;
-const FEED_NAME_RE = /\bfeed\b|\bpost\b|\bcarross?el\b|\bcarousel\b/i;
-function classifyByName(name) {
-  if (!name) return null;
-  if (STORY_NAME_RE.test(name)) return 'story';
-  if (FEED_NAME_RE.test(name)) return 'feed';
-  return null;
-}
-function classifyByAspect(width, height) {
-  if (!width || !height) return null;
-  const ratio = height / width;
-  // só ratio >=1.5 é vertical o bastante pra ser Stories/Reels (9:16 ≈ 1.78); tudo abaixo disso —
-  // 1:1, 4:5 (≈1.25, o formato mais comum de post de Feed) ou paisagem — é Feed.
-  return ratio >= 1.5 ? 'story' : 'feed';
+function classifyPlacement(name) {
+  return STORY_NAME_RE.test(name || '') ? 'story' : 'feed';
 }
 
 function timeParam(days, dateFrom, dateTo) {
@@ -162,12 +146,8 @@ module.exports = async (req, res) => {
       id: r.ad_id, name: r.ad_name, ctr: num(r.ctr), clicks: num(r.clicks), impressions: num(r.impressions),
       reach: num(r.reach), engagement: sumActions(r.actions, ENGAGEMENT_ACTION_TYPES),
       conversions: sumActions(r.actions, CONVERSION_ACTION_TYPES),
+      placements: [classifyPlacement(r.ad_name)],
     })).filter((a) => a.impressions >= 100);
-
-    // formato (feed/story) por anúncio — preenchido depois de buscar a(s) peça(s) do anúncio
-    // (bloco abaixo): proporção da imagem manda, nome do anúncio é só fallback quando não dá
-    // pra saber a proporção (vídeo, ou imagem sem dimensão retornada pela API).
-    const formatTagByAdId = {}; // adId -> array de tags (pode ter 'feed' e 'story' juntos)
 
     // Busca a peça (imagem/vídeo) dos candidatos primeiro — precisa disso pra poder agrupar
     // duplicatas (mesma peça subida em vários anúncios) antes de rankear, senão o mesmo
@@ -190,7 +170,6 @@ module.exports = async (req, res) => {
       ));
       const hashByAdId = {};
       const allHashes = new Set();
-      const allImageHashesByAdId = {}; // adId -> TODOS os hashes de imagem do anúncio (Advantage+ pode ter uma versão feed e uma story juntas)
       const videoCreativeByAdId = {}; // adId -> creative.id, pra rebuscar thumbnail_url em tamanho maior
       creativeResults.forEach((r, i) => {
         const adId = creativeCandidates[i].id;
@@ -213,35 +192,16 @@ module.exports = async (req, res) => {
           videoCreativeByAdId[adId] = creative.id;
           dedupKeyById[adId] = 'creative:' + creative.id;
         }
-        // pra classificação de formato, junta TODAS as imagens do anúncio, não só a [0] usada
-        // como identidade/thumbnail — um anúncio Advantage+ pode carregar uma versão quadrada/
-        // paisagem (feed) e uma vertical (stories) ao mesmo tempo.
-        const imgHashes = (afsImages && afsImages.length) ? afsImages.map((im) => im.hash).filter(Boolean) : (creative.image_hash ? [creative.image_hash] : []);
-        if (imgHashes.length) {
-          allImageHashesByAdId[adId] = imgHashes;
-          imgHashes.forEach((h) => allHashes.add(h));
-        }
       });
       if (allHashes.size) {
         const hashList = Array.from(allHashes);
         const adImagesData = await fetchMeta(
           'act_' + adAccount + '/adimages',
-          'hashes=' + encodeURIComponent(JSON.stringify(hashList)) + '&fields=hash,url,width,height'
+          'hashes=' + encodeURIComponent(JSON.stringify(hashList)) + '&fields=hash,url'
         ).catch(() => ({ data: [] }));
         const urlByHash = {};
-        const dimsByHash = {};
-        (adImagesData.data || []).forEach((img) => { urlByHash[img.hash] = img.url; dimsByHash[img.hash] = { width: num(img.width), height: num(img.height) }; });
+        (adImagesData.data || []).forEach((img) => { urlByHash[img.hash] = img.url; });
         Object.keys(hashByAdId).forEach((adId) => { thumbById[adId] = urlByHash[hashByAdId[adId]] || null; });
-        // formato: proporção de CADA imagem do anúncio — se tiver versão feed e versão story, marca as duas
-        Object.keys(allImageHashesByAdId).forEach((adId) => {
-          const tags = new Set();
-          allImageHashesByAdId[adId].forEach((h) => {
-            const dims = dimsByHash[h];
-            const t = dims && classifyByAspect(dims.width, dims.height);
-            if (t) tags.add(t);
-          });
-          if (tags.size) formatTagByAdId[adId] = Array.from(tags);
-        });
       }
       const videoAdIds = Object.keys(videoCreativeByAdId);
       if (videoAdIds.length) {
@@ -251,13 +211,6 @@ module.exports = async (req, res) => {
         resizedResults.forEach((r, i) => { thumbById[videoAdIds[i]] = (r && r.thumbnail_url) || null; });
       }
     }
-    // aplica a classificação final: proporção da imagem manda; nome do anúncio só decide quando
-    // não há nenhuma dimensão disponível pra esse anúncio (ex.: vídeo sem imagem associada).
-    adsWithMetrics.forEach((a) => {
-      if (formatTagByAdId[a.id]) { a.placements = formatTagByAdId[a.id]; return; }
-      const nameTag = classifyByName(a.name);
-      a.placements = nameTag ? [nameTag] : [];
-    });
 
     // Agrupa anúncios que usam a mesma peça e soma as métricas do grupo — o ranking passa a
     // refletir a performance real do criativo (não de um upload duplicado dele isoladamente),
@@ -292,9 +245,9 @@ module.exports = async (req, res) => {
     const pick = ({ id, name, ctr, conversions, reach, engagement, thumbnail, adCount, placements }) =>
       ({ id, name, ctr, conversions, reach, engagement, thumbnail, adCount, placements });
     const creatives = {
-      byCtr: dedupedCreatives.slice().sort((a, b) => b.ctr - a.ctr).slice(0, 20).map(pick),
-      byReach: dedupedCreatives.slice().sort((a, b) => b.reach - a.reach).slice(0, 20).map(pick),
-      byEngagement: dedupedCreatives.slice().sort((a, b) => b.engagement - a.engagement).slice(0, 20).map(pick),
+      byCtr: dedupedCreatives.slice().sort((a, b) => b.ctr - a.ctr).slice(0, 30).map(pick),
+      byReach: dedupedCreatives.slice().sort((a, b) => b.reach - a.reach).slice(0, 30).map(pick),
+      byEngagement: dedupedCreatives.slice().sort((a, b) => b.engagement - a.engagement).slice(0, 30).map(pick),
     };
 
     let timeline = { labels: [], values: [] };
