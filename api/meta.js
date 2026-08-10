@@ -10,6 +10,12 @@ const BRAND_PATTERNS = {
   meubiju: ['meubiju'],
   novaoliva: ['novaoliva', 'novaolica'], // "novaolica" é um typo real visto em campanha ativa
 };
+// "Armazém Tio João" (loja/e-commerce) tem "tio joao" no nome — sem essa exclusão, toda campanha
+// do Armazém era contada em dobro dentro do Tio João também (confirmado em campanhas reais do
+// Google Ads: "Rede de Pesquisa - Armazém Tio João", "Shopping Tio João..." etc.).
+const BRAND_EXCLUDE_PATTERNS = {
+  tiojoao: ['armazem'],
+};
 
 // action_types que contam como conversão/receita quando presentes (dependem do pixel/evento configurado na campanha)
 const CONVERSION_ACTION_TYPES = ['purchase', 'omni_purchase', 'offsite_conversion.fb_pixel_purchase', 'lead', 'onsite_conversion.lead_grouped', 'complete_registration'];
@@ -26,6 +32,8 @@ function normalize(s) {
 }
 function matchesBrand(campaignName, brand) {
   const norm = normalize(campaignName);
+  const excludes = BRAND_EXCLUDE_PATTERNS[brand] || [];
+  if (excludes.some((p) => norm.indexOf(p) !== -1)) return false;
   return (BRAND_PATTERNS[brand] || []).some((p) => norm.indexOf(p) !== -1);
 }
 function sumActions(actions, types) {

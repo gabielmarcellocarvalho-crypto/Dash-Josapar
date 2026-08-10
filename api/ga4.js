@@ -25,18 +25,25 @@ function getClient() {
   return cachedClient;
 }
 
+// servidor roda em UTC — sem esse ajuste, uma consulta feita à noite no Brasil (21h-23h59, já
+// virou madrugada em UTC) pegava "hoje" um dia à frente do que a conta GA4 mostra (fuso
+// America/Sao_Paulo). Brasil não observa horário de verão desde 2019, UTC-3 fixo é seguro.
+function fmtDateSaoPaulo(ms) {
+  return new Date(ms - 3 * 3600000).toISOString().split('T')[0];
+}
+// (days-1), não (days): "30 dias" tem que cobrir exatamente 30 dias corridos (hoje + 29 anteriores),
+// igual ao Google Ads (api/googleads.js) — com `days` puro a janela tinha 31 dias e as duas fontes
+// nunca batiam pro mesmo período selecionado.
 function rangeFromDays(days) {
   const end = new Date();
-  const start = new Date(end.getTime() - days * 86400000);
-  const fmt = (d) => d.toISOString().split('T')[0];
-  return { startDate: fmt(start), endDate: fmt(end) };
+  const start = new Date(end.getTime() - (days - 1) * 86400000);
+  return { startDate: fmtDateSaoPaulo(start.getTime()), endDate: fmtDateSaoPaulo(end.getTime()) };
 }
 function prevRangeFromDays(days) {
   const nowMs = Date.now();
   const endMs = nowMs - days * 86400000;
-  const startMs = endMs - days * 86400000;
-  const fmt = (ms) => new Date(ms).toISOString().split('T')[0];
-  return { startDate: fmt(startMs), endDate: fmt(endMs) };
+  const startMs = endMs - (days - 1) * 86400000;
+  return { startDate: fmtDateSaoPaulo(startMs), endDate: fmtDateSaoPaulo(endMs) };
 }
 // para range personalizado, o "período anterior" é uma janela do mesmo tamanho, imediatamente antes.
 function prevRangeFromCustom(startDate, endDate) {

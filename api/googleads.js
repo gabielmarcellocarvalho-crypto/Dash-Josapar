@@ -11,6 +11,13 @@ const BRAND_PATTERNS = {
   meubiju: ['meubiju'],
   novaoliva: ['novaoliva', 'novaolica'],
 };
+// "Armazém Tio João" (loja/e-commerce) tem "tio joao" no nome — sem essa exclusão, toda campanha
+// do Armazém era contada em dobro dentro do Tio João também (confirmado em campanhas reais:
+// "Rede de Pesquisa - Armazém Tio João", "Shopping Tio João - Todas as Categorias" etc. apareciam
+// tanto no total do Armazém quanto no do Tio João).
+const BRAND_EXCLUDE_PATTERNS = {
+  tiojoao: ['armazem'],
+};
 
 const API_VERSION = 'v21';
 
@@ -20,6 +27,8 @@ function normalize(s) {
 }
 function matchesBrand(campaignName, brand) {
   const norm = normalize(campaignName);
+  const excludes = BRAND_EXCLUDE_PATTERNS[brand] || [];
+  if (excludes.some((p) => norm.indexOf(p) !== -1)) return false;
   return (BRAND_PATTERNS[brand] || []).some((p) => norm.indexOf(p) !== -1);
 }
 
@@ -62,12 +71,17 @@ async function gaqlSearch(query) {
   return json.results || [];
 }
 
+// servidor roda em UTC — sem esse ajuste, uma consulta feita à noite no Brasil (21h-23h59, já
+// virou madrugada em UTC) pegava "hoje" um dia à frente do que a conta do Google Ads mostra
+// (fuso America/Sao_Paulo). Brasil não observa horário de verão desde 2019, UTC-3 fixo é seguro.
+function fmtDateSaoPaulo(d) {
+  return new Date(d.getTime() - 3 * 3600000).toISOString().split('T')[0];
+}
 function dateWindow(days, dateFrom, dateTo) {
   if (dateFrom && dateTo) return { start: dateFrom, end: dateTo };
   const end = new Date();
   const start = new Date(end.getTime() - (days - 1) * 86400000);
-  const fmt = (d) => d.toISOString().split('T')[0];
-  return { start: fmt(start), end: fmt(end) };
+  return { start: fmtDateSaoPaulo(start), end: fmtDateSaoPaulo(end) };
 }
 
 module.exports = async (req, res) => {
