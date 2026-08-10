@@ -71,18 +71,32 @@ module.exports = async (req, res) => {
   try {
     const tParam = timeParam(days, dateFrom, dateTo);
     const campaignFields = 'campaign_id,campaign_name,spend,impressions,clicks,ctr,cpc,reach,actions,action_values';
-    const [campaignData, adData, ageGenderData, deviceData, hourData] = await Promise.all([
+    const [campaignData, adData, ageGenderData, deviceData, hourData, placementData] = await Promise.all([
       fetchMeta('act_' + adAccount + '/insights', 'level=campaign&fields=' + campaignFields + '&' + tParam + '&limit=300'),
       fetchMeta('act_' + adAccount + '/insights', 'level=ad&fields=ad_id,ad_name,campaign_name,ctr,clicks,impressions,reach,spend,actions&' + tParam + '&limit=300'),
       fetchMeta('act_' + adAccount + '/insights', 'level=campaign&fields=campaign_name,clicks,impressions,spend&breakdowns=age,gender&' + tParam + '&limit=300').catch(() => ({ data: [] })),
       fetchMeta('act_' + adAccount + '/insights', 'level=campaign&fields=campaign_name,clicks,impressions&breakdowns=device_platform&' + tParam + '&limit=300').catch(() => ({ data: [] })),
       fetchMeta('act_' + adAccount + '/insights', 'level=campaign&fields=campaign_name,clicks,impressions&breakdowns=hourly_stats_aggregated_by_advertiser_time_zone&' + tParam + '&limit=500').catch(() => ({ data: [] })),
+      // posicionamento por anúncio (feed/story/reels/...) — usado pra filtrar a aba Criativos
+      fetchMeta('act_' + adAccount + '/insights', 'level=ad&fields=ad_id,campaign_name,impressions&breakdowns=publisher_platform,platform_position&' + tParam + '&limit=1000').catch(() => ({ data: [] })),
     ]);
     const matched = (campaignData.data || []).filter((r) => matchesBrand(r.campaign_name, brand));
     const matchedAds = (adData.data || []).filter((r) => matchesBrand(r.campaign_name, brand));
     const matchedAgeGender = (ageGenderData.data || []).filter((r) => matchesBrand(r.campaign_name, brand));
     const matchedDevice = (deviceData.data || []).filter((r) => matchesBrand(r.campaign_name, brand));
     const matchedHour = (hourData.data || []).filter((r) => matchesBrand(r.campaign_name, brand));
+    const matchedPlacement = (placementData.data || []).filter((r) => matchesBrand(r.campaign_name, brand));
+
+    // 'feed' e 'story' viram tag pro filtro da aba Criativos; reels e outros posicionamentos
+    // (marketplace, audience network, in-stream etc.) não recebem tag — só aparecem em "Todos".
+    const placementTagsByAdId = {};
+    matchedPlacement.forEach((r) => {
+      if (num(r.impressions) <= 0) return;
+      const pos = r.platform_position;
+      if (pos !== 'feed' && pos !== 'story') return;
+      if (!placementTagsByAdId[r.ad_id]) placementTagsByAdId[r.ad_id] = new Set();
+      placementTagsByAdId[r.ad_id].add(pos);
+    });
 
     let spend = 0, impressions = 0, clicks = 0, reach = 0, conversions = 0, revenue = 0, engagement = 0;
     const campaigns = matched.map((r) => {
@@ -137,14 +151,18 @@ module.exports = async (req, res) => {
       id: r.ad_id, name: r.ad_name, ctr: num(r.ctr), clicks: num(r.clicks), impressions: num(r.impressions),
       reach: num(r.reach), engagement: sumActions(r.actions, ENGAGEMENT_ACTION_TYPES),
       conversions: sumActions(r.actions, CONVERSION_ACTION_TYPES),
+      placements: Array.from(placementTagsByAdId[r.ad_id] || []),
     })).filter((a) => a.impressions >= 100);
-    const topByCtr = adsWithMetrics.slice().sort((a, b) => b.ctr - a.ctr).slice(0, 5);
-    const topByConv = adsWithMetrics.slice().sort((a, b) => b.conversions - a.conversions).slice(0, 5);
-    const topByReach = adsWithMetrics.slice().sort((a, b) => b.reach - a.reach).slice(0, 5);
-    const topByEngagement = adsWithMetrics.slice().sort((a, b) => b.engagement - a.engagement).slice(0, 5);
-    const uniqueAdIds = Array.from(new Set(topByCtr.concat(topByConv, topByReach, topByEngagement).map((a) => a.id)));
+
+    // Busca a peça (imagem/vídeo) dos candidatos primeiro — precisa disso pra poder agrupar
+    // duplicatas (mesma peça subida em vários anúncios) antes de rankear, senão o mesmo
+    // criativo repetido "rouba" as 5 vagas do ranking em vez de aparecer uma vez só.
+    // Limita o pool pelas maiores impressões pra não estourar rate limit da Graph API em
+    // marcas com muitos anúncios ativos — 1 chamada por anúncio candidato.
+    const creativeCandidates = adsWithMetrics.slice().sort((a, b) => b.impressions - a.impressions).slice(0, 120);
     const thumbById = {};
-    if (uniqueAdIds.length) {
+    const dedupKeyById = {};
+    if (creativeCandidates.length) {
       // 3 formatos de criativo, 3 jeitos de achar a imagem em boa resolução:
       // 1) imagem simples -> creative.image_url já vem em resolução real.
       // 2) Advantage+/Formato automático -> não tem imagem única no creative, só um HASH em
@@ -152,24 +170,32 @@ module.exports = async (req, res) => {
       // 3) anúncio de vídeo -> sem image_url, só thumbnail_url, que por padrão vem cortado em
       //    64x64; resolve pedindo thumbnail_url de novo direto no objeto creative com
       //    thumbnail_width/height (só funciona como parâmetro top-level, não aninhado em ad->creative).
-      const creativeResults = await Promise.all(uniqueAdIds.map((id) =>
-        fetchMeta(id, 'fields=creative%7Bid,image_url,thumbnail_url,asset_feed_spec%7Bimages%7D%7D').catch(() => null)
+      const creativeResults = await Promise.all(creativeCandidates.map((a) =>
+        fetchMeta(a.id, 'fields=creative%7Bid,image_url,image_hash,thumbnail_url,asset_feed_spec%7Bimages%7D%7D').catch(() => null)
       ));
       const hashByAdId = {};
       const allHashes = new Set();
       const videoCreativeByAdId = {}; // adId -> creative.id, pra rebuscar thumbnail_url em tamanho maior
       creativeResults.forEach((r, i) => {
-        const adId = uniqueAdIds[i];
+        const adId = creativeCandidates[i].id;
         const creative = r && r.creative;
         if (!creative) return;
         const afsImages = creative.asset_feed_spec && creative.asset_feed_spec.images;
-        if (afsImages && afsImages.length && afsImages[0].hash) {
-          hashByAdId[adId] = afsImages[0].hash;
-          allHashes.add(afsImages[0].hash);
+        // hash é baseado no conteúdo do arquivo — mesma imagem re-subida várias vezes gera o mesmo hash,
+        // por isso é a melhor chave pra detectar "mesmo criativo, uploads diferentes".
+        const hash = (afsImages && afsImages.length && afsImages[0].hash) || creative.image_hash;
+        if (hash) {
+          hashByAdId[adId] = hash;
+          allHashes.add(hash);
+          dedupKeyById[adId] = 'hash:' + hash;
         } else if (creative.image_url) {
           thumbById[adId] = creative.image_url;
+          dedupKeyById[adId] = 'url:' + creative.image_url;
         } else if (creative.id) {
+          // vídeo (ou anúncio duplicado reaproveitando o mesmo objeto de criativo) — o id do
+          // criativo já é uma chave estável entre anúncios que compartilham a mesma peça.
           videoCreativeByAdId[adId] = creative.id;
+          dedupKeyById[adId] = 'creative:' + creative.id;
         }
       });
       if (allHashes.size) {
@@ -190,10 +216,43 @@ module.exports = async (req, res) => {
         resizedResults.forEach((r, i) => { thumbById[videoAdIds[i]] = (r && r.thumbnail_url) || null; });
       }
     }
-    const withThumb = (a) => ({ id: a.id, name: a.name, ctr: a.ctr, conversions: a.conversions, reach: a.reach, engagement: a.engagement, thumbnail: thumbById[a.id] || null });
+
+    // Agrupa anúncios que usam a mesma peça e soma as métricas do grupo — o ranking passa a
+    // refletir a performance real do criativo (não de um upload duplicado dele isoladamente),
+    // e cada peça aparece uma única vez no ranking. placements é a união das tags (feed/story)
+    // de todos os anúncios do grupo, pro filtro da aba Criativos.
+    const groupsByKey = {};
+    adsWithMetrics.forEach((a) => {
+      const key = dedupKeyById[a.id] || ('ad:' + a.id);
+      if (!groupsByKey[key]) {
+        groupsByKey[key] = {
+          id: a.id, name: a.name, thumbnail: thumbById[a.id] || null, repImpressions: -1,
+          impressions: 0, clicks: 0, reach: 0, engagement: 0, conversions: 0, adCount: 0, placements: new Set(),
+        };
+      }
+      const g = groupsByKey[key];
+      g.impressions += a.impressions; g.clicks += a.clicks; g.reach += a.reach;
+      g.engagement += a.engagement; g.conversions += a.conversions; g.adCount += 1;
+      a.placements.forEach((p) => g.placements.add(p));
+      // representante do grupo (nome/thumbnail exibidos) = anúncio com mais impressões nele
+      if (a.impressions >= g.repImpressions) {
+        g.repImpressions = a.impressions;
+        g.id = a.id; g.name = a.name; g.thumbnail = thumbById[a.id] || g.thumbnail;
+      }
+    });
+    const dedupedCreatives = Object.values(groupsByKey).map((g) => ({
+      id: g.id, name: g.name, thumbnail: g.thumbnail, adCount: g.adCount, placements: Array.from(g.placements),
+      ctr: g.impressions > 0 ? (g.clicks / g.impressions) * 100 : 0,
+      reach: g.reach, engagement: g.engagement, conversions: g.conversions,
+    }));
+    // Não corta em "top N" aqui — devolve um pool maior já ordenado; o front filtra por
+    // posicionamento (Todos/Feed/Stories) e só então corta pros 3 melhores do filtro atual.
+    const pick = ({ id, name, ctr, conversions, reach, engagement, thumbnail, adCount, placements }) =>
+      ({ id, name, ctr, conversions, reach, engagement, thumbnail, adCount, placements });
     const creatives = {
-      byCtr: topByCtr.map(withThumb), byConv: topByConv.map(withThumb),
-      byReach: topByReach.map(withThumb), byEngagement: topByEngagement.map(withThumb),
+      byCtr: dedupedCreatives.slice().sort((a, b) => b.ctr - a.ctr).slice(0, 20).map(pick),
+      byReach: dedupedCreatives.slice().sort((a, b) => b.reach - a.reach).slice(0, 20).map(pick),
+      byEngagement: dedupedCreatives.slice().sort((a, b) => b.engagement - a.engagement).slice(0, 20).map(pick),
     };
 
     let timeline = { labels: [], values: [] };

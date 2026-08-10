@@ -345,7 +345,9 @@
     display:none; position:absolute; inset:0; z-index:1; flex-direction:column; align-items:center; justify-content:center; gap:6px;
   }
   .creative-info{ padding:10px 12px 12px; display:flex; flex-direction:column; gap:6px; }
-  .creative-name{ font-size:11.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .creative-name-row{ display:flex; align-items:center; gap:6px; min-width:0; }
+  .creative-name{ font-size:11.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+  .creative-dup-badge{ flex-shrink:0; font-size:9.5px; font-weight:700; color:var(--text-secondary); background:var(--bg-hover,rgba(127,127,127,0.15)); border-radius:999px; padding:1px 6px; line-height:1.5; }
   .creative-metric{ font-size:11px; color:var(--accent-text); font-weight:700; }
   .creative-block-title{ font-size:12.5px; font-weight:600; margin-bottom:12px; display:flex; align-items:center; gap:8px; color:var(--text-primary); }
   .creative-block-title svg{ width:14px; height:14px; color:var(--accent-text); }
@@ -600,16 +602,23 @@ function buildBrandData(brand){
     campaigns.sort(function(a,b){ return b.conv - a.conv; });
   }
 
+  // gera um pool maior que 3 (já ordenado do melhor pro pior) — o filtro de posicionamento
+  // corta pra Top 3 DEPOIS de filtrar por feed/story, senão sobra pouca coisa quando filtrado.
+  var CREATIVE_PLACEMENT_CYCLE = [['feed'],['story'],['feed','story']];
   function creativeSet(labelPool, metricLabel, metricGen){
     var items = [];
-    for(var i=0;i<5;i++){ items.push({ name: labelPool[i % labelPool.length] + ' — v' + (i+1), metric: metricGen(rng, i), metricLabel: metricLabel }); }
+    for(var i=0;i<8;i++){
+      items.push({
+        name: labelPool[i % labelPool.length] + ' — v' + (i+1), metric: metricGen(rng, i), metricLabel: metricLabel,
+        placements: CREATIVE_PLACEMENT_CYCLE[i % CREATIVE_PLACEMENT_CYCLE.length], adCount: 1,
+      });
+    }
     return items;
   }
   var creatives = {
-    byCtr: creativeSet(['Criativo Receita','Criativo Sabor','Criativo Família'], 'CTR', function(r,i){ return fmtPct((3.2-i*0.35)+r()*0.4,1); }),
-    byConv: creativeSet(['Anúncio Promo','Anúncio Combo','Anúncio Linha'], 'Conversões', function(r,i){ return fmtNum(620-i*80+r()*60); }),
-    byReach: creativeSet(['Post Receita','Post Bastidores','Post Depoimento'], 'Alcance', function(r,i){ return fmtNum(48000-i*6000+r()*4000); }),
-    byEngagement: creativeSet(['Reels Preparo','Post Dica','Story Enquete'], 'Engajamento', function(r,i){ return fmtPct((6.4-i*0.6)+r()*0.5,1); })
+    byCtr: creativeSet(['Criativo Receita','Criativo Sabor','Criativo Família'], 'CTR', function(r,i){ return fmtPct((3.2-i*0.32)+r()*0.4,1); }),
+    byReach: creativeSet(['Post Receita','Post Bastidores','Post Depoimento'], 'Alcance', function(r,i){ return fmtNum(48000-i*4800+r()*4000); }),
+    byEngagement: creativeSet(['Reels Preparo','Post Dica','Story Enquete'], 'Engajamento', function(r,i){ return fmtPct((6.4-i*0.55)+r()*0.5,1); })
   };
 
   // ---------- Regional real (por estado) ----------
@@ -964,6 +973,7 @@ function inferObjectiveFromName(name){
   return '—';
 }
 var REAL_CAMPAIGNS = null; // preenchido por loadRealCampaignsIfAvailable; null = mostra mock
+var REAL_CREATIVES = null; // preenchido por loadRealMediaIfAvailable; null = mostra mock
 function campaignRowHtml(c, i){
   return '<tr><td><span class="rank-pill'+(i<3?' top':'')+'">'+(i+1)+'</span></td><td>'+c.name+'</td>'+
     '<td><span class="platform-tag">'+c.platform+'</span></td><td>'+c.objective+'</td>'+
@@ -1143,18 +1153,47 @@ function creativeCards(items){
         'onerror="this.style.display=\'none\';this.previousElementSibling.style.display=\'none\';this.nextElementSibling.style.display=\'flex\';">'+
         '<div class="creative-thumb-fallback">'+iconSvg(ICONS.image)+'<span class="creative-thumb-label">Prévia indisponível</span></div>'
       : iconSvg(ICONS.image)+'<span class="creative-thumb-label">Sem preview — aguardando Image URL</span>';
+    var dupBadge = it.adCount > 1 ? '<span class="creative-dup-badge" title="Mesma peça publicada em '+it.adCount+' anúncios — métricas somadas">×'+it.adCount+'</span>' : '';
     return '<div class="creative-card"><div class="creative-thumb"><span class="rank-pill'+(i===0?' top':'')+'">'+(i+1)+'</span>'+
       thumb+'</div>'+
-      '<div class="creative-info"><div class="creative-name">'+it.name+'</div><div class="creative-metric">'+it.metricLabel+': '+it.metric+'</div></div></div>';
+      '<div class="creative-info"><div class="creative-name-row"><div class="creative-name">'+it.name+'</div>'+dupBadge+'</div><div class="creative-metric">'+it.metricLabel+': '+it.metric+'</div></div></div>';
   }).join('');
 }
+// pool (mock ou real) atualmente disponível pra aba Criativos — REAL_CREATIVES some quando troca de marca/aba
+function creativePool(){ return REAL_CREATIVES || STATE.data[STATE.brand].creatives; }
+function creativeFilterList(list, placement){
+  return (list || []).filter(function(it){
+    return placement === 'all' || (it.placements && it.placements.indexOf(placement) !== -1);
+  }).slice(0, 3);
+}
+function renderCreativeGrid(elId, list, placement){
+  var el = document.getElementById(elId);
+  if(el) el.innerHTML = creativeCards(creativeFilterList(list, placement));
+}
+function filterCreatives(placement, btn){
+  document.querySelectorAll('#creative-placement-pills .pp').forEach(function(p){ p.classList.remove('active'); });
+  if(btn) btn.classList.add('active');
+  var c = creativePool();
+  renderCreativeGrid('creative-grid-ctr', c.byCtr, placement);
+  renderCreativeGrid('creative-grid-reach', c.byReach, placement);
+  renderCreativeGrid('creative-grid-engagement', c.byEngagement, placement);
+}
 function sectionCriativos(b){
+  REAL_CREATIVES = null; // toda troca de marca/aba volta a mostrar mock até o fetch real responder
   var c = STATE.data[b.id].creatives;
-  var blocks = '<div class="creative-block"><div class="creative-block-title">'+iconSvg(ICONS.ctr)+'Top 5 Criativos por CTR<span id="creatives-badge" class="kpi-source" style="margin-left:8px;">mídia (mock)</span></div><div class="creative-grid" id="creative-grid-ctr">'+creativeCards(c.byCtr)+'</div></div>';
-  if(b.hasConversion) blocks += '<div class="creative-block"><div class="creative-block-title">'+iconSvg(ICONS.conv)+'Top 5 Criativos por Conversão</div><div class="creative-grid" id="creative-grid-conv">'+creativeCards(c.byConv)+'</div></div>';
-  blocks += '<div class="creative-block"><div class="creative-block-title">'+iconSvg(ICONS.reach)+'Top 5 Criativos por Alcance</div><div class="creative-grid" id="creative-grid-reach">'+creativeCards(c.byReach)+'</div></div>';
-  blocks += '<div class="creative-block"><div class="creative-block-title">'+iconSvg(ICONS.engagement)+'Top 5 Criativos por Engajamento</div><div class="creative-grid" id="creative-grid-engagement">'+creativeCards(c.byEngagement)+'</div></div>';
-  return '<div class="section-heading"><div><h2>Criativos e posts vencedores</h2><p>Diferencial estratégico — visualização direta, sem análise manual externa</p></div></div>'+blocks;
+  var blocks = ''+
+    '<div class="section-heading">'+
+      '<div><h2>Top 3 criativos por métrica</h2><p>Peças duplicadas (mesmo criativo subido mais de uma vez) são agrupadas — o selo ×N mostra quantos anúncios foram somados</p></div>'+
+      '<div class="pillrow" id="creative-placement-pills">'+
+        '<button class="pp active" data-placement="all" onclick="filterCreatives(\'all\', this)">Todos</button>'+
+        '<button class="pp" data-placement="feed" onclick="filterCreatives(\'feed\', this)">Feed</button>'+
+        '<button class="pp" data-placement="story" onclick="filterCreatives(\'story\', this)">Stories</button>'+
+      '</div>'+
+    '</div>';
+  blocks += '<div class="creative-block"><div class="creative-block-title">'+iconSvg(ICONS.ctr)+'Top 3 Criativos por CTR<span id="creatives-badge" class="kpi-source" style="margin-left:8px;">mídia (mock)</span></div><div class="creative-grid" id="creative-grid-ctr">'+creativeCards(creativeFilterList(c.byCtr,'all'))+'</div></div>';
+  blocks += '<div class="creative-block"><div class="creative-block-title">'+iconSvg(ICONS.reach)+'Top 3 Criativos por Alcance</div><div class="creative-grid" id="creative-grid-reach">'+creativeCards(creativeFilterList(c.byReach,'all'))+'</div></div>';
+  blocks += '<div class="creative-block"><div class="creative-block-title">'+iconSvg(ICONS.engagement)+'Top 3 Criativos por Engajamento</div><div class="creative-grid" id="creative-grid-engagement">'+creativeCards(creativeFilterList(c.byEngagement,'all'))+'</div></div>';
+  return blocks;
 }
 
 /* ---------- Regional (mapa real por estado) ---------- */
@@ -1353,7 +1392,7 @@ function mergeTimelines(a, b){
   (b||{labels:[],values:[]}).labels.forEach(function(l,i){ if(!(l in map)){ map[l]=0; order.push(l); } map[l]+=b.values[i]; });
   return { labels: order, values: order.map(function(l){ return map[l]; }) };
 }
-var CREATIVE_GRID_IDS = ['creative-grid-ctr','creative-grid-conv','creative-grid-reach','creative-grid-engagement'];
+var CREATIVE_GRID_IDS = ['creative-grid-ctr','creative-grid-reach','creative-grid-engagement'];
 function setCreativeGridsLoading(on){
   CREATIVE_GRID_IDS.forEach(function(id){ var el = document.getElementById(id); if(el) el.classList.toggle('is-loading', on); });
 }
@@ -1454,32 +1493,23 @@ function loadRealMediaIfAvailable(brandId, days){
       if(kwBadge){ kwBadge.textContent = 'Google Ads'; kwBadge.style.color = ''; kwBadge.style.borderColor = ''; }
     }
 
-    var ctrGridEl = document.getElementById('creative-grid-ctr');
-    var convGridEl = document.getElementById('creative-grid-conv');
-    var reachGridEl = document.getElementById('creative-grid-reach');
-    var engagementGridEl = document.getElementById('creative-grid-engagement');
     var creativesBadge = document.getElementById('creatives-badge');
-    if(metaOk && meta.creatives){
-      if(ctrGridEl && meta.creatives.byCtr && meta.creatives.byCtr.length){
-        ctrGridEl.innerHTML = creativeCards(meta.creatives.byCtr.map(function(c){
-          return { name:c.name, metric:fmtPct(c.ctr,2), metricLabel:'CTR', thumbnail:c.thumbnail };
-        }));
-      }
-      if(convGridEl && meta.creatives.byConv && meta.creatives.byConv.length){
-        convGridEl.innerHTML = creativeCards(meta.creatives.byConv.map(function(c){
-          return { name:c.name, metric:fmtNum(c.conversions), metricLabel:'Conversões', thumbnail:c.thumbnail };
-        }));
-      }
-      if(reachGridEl && meta.creatives.byReach && meta.creatives.byReach.length){
-        reachGridEl.innerHTML = creativeCards(meta.creatives.byReach.map(function(c){
-          return { name:c.name, metric:fmtNum(c.reach), metricLabel:'Alcance', thumbnail:c.thumbnail };
-        }));
-      }
-      if(engagementGridEl && meta.creatives.byEngagement && meta.creatives.byEngagement.length){
-        engagementGridEl.innerHTML = creativeCards(meta.creatives.byEngagement.map(function(c){
-          return { name:c.name, metric:fmtNum(c.engagement), metricLabel:'Engajamento', thumbnail:c.thumbnail };
-        }));
-      }
+    if(metaOk && meta.creatives && document.getElementById('creative-grid-ctr')){
+      REAL_CREATIVES = {
+        byCtr: (meta.creatives.byCtr || []).map(function(c){
+          return { name:c.name, metric:fmtPct(c.ctr,2), metricLabel:'CTR', thumbnail:c.thumbnail, adCount:c.adCount, placements:c.placements };
+        }),
+        byReach: (meta.creatives.byReach || []).map(function(c){
+          return { name:c.name, metric:fmtNum(c.reach), metricLabel:'Alcance', thumbnail:c.thumbnail, adCount:c.adCount, placements:c.placements };
+        }),
+        byEngagement: (meta.creatives.byEngagement || []).map(function(c){
+          return { name:c.name, metric:fmtNum(c.engagement), metricLabel:'Engajamento', thumbnail:c.thumbnail, adCount:c.adCount, placements:c.placements };
+        }),
+      };
+      var activePlacementBtn = document.querySelector('#creative-placement-pills .pp.active');
+      renderCreativeGrid('creative-grid-ctr', REAL_CREATIVES.byCtr, activePlacementBtn ? (activePlacementBtn.getAttribute('data-placement') || 'all') : 'all');
+      renderCreativeGrid('creative-grid-reach', REAL_CREATIVES.byReach, activePlacementBtn ? (activePlacementBtn.getAttribute('data-placement') || 'all') : 'all');
+      renderCreativeGrid('creative-grid-engagement', REAL_CREATIVES.byEngagement, activePlacementBtn ? (activePlacementBtn.getAttribute('data-placement') || 'all') : 'all');
       if(creativesBadge){ creativesBadge.textContent = 'Meta Ads · real'; creativesBadge.style.color = 'var(--success)'; creativesBadge.style.borderColor = 'rgba(61,220,132,0.3)'; }
     }
 
