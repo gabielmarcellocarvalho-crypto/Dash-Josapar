@@ -251,8 +251,10 @@
     background-image:linear-gradient(90deg, transparent, var(--skeleton-sweep), transparent), linear-gradient(var(--overlay-3), var(--overlay-3));
     background-size:200% 100%, 100% 100%; background-repeat:no-repeat; animation:kpiShimmer 1.2s linear infinite;
   }
-  .keywords-empty-note{ display:none; position:absolute; inset:0; align-items:center; justify-content:center; text-align:center; padding:0 24px; color:var(--text-tertiary); font-size:12px; }
-  .keywords-empty-note.show{ display:flex; }
+  /* nota "sem dado real" reutilizável — chart/tabela/lista tem fonte real, mas essa busca não achou nada.
+     Nunca deixa o skeleton de loading nem número fabricado por baixo, sempre um destes dois. */
+  .empty-note{ display:none; position:absolute; inset:0; align-items:center; justify-content:center; text-align:center; padding:0 24px; color:var(--text-tertiary); font-size:12px; }
+  .empty-note.show{ display:flex; }
   .kpi-icon{
     width:26px; height:26px; border-radius:7px; background:var(--accent-soft);
     display:flex; align-items:center; justify-content:center; flex-shrink:0;
@@ -284,7 +286,7 @@
   .legend-dot{ width:8px; height:8px; border-radius:2px; }
 
   /* Tables */
-  .table-wrap{ overflow-x:auto; }
+  .table-wrap{ overflow-x:auto; position:relative; }
   table{ width:100%; border-collapse:collapse; font-size:12.5px; min-width:640px; }
   thead th{
     text-align:left; font-size:10px; font-weight:600; letter-spacing:.5px; text-transform:uppercase;
@@ -310,6 +312,7 @@
   /* Creatives — flex centralizado (máx. 3 cards; centraliza também quando o filtro deixa 1 ou 2) */
   .creative-grid{ display:flex; flex-wrap:wrap; justify-content:center; gap:12px; position:relative; min-height:120px; }
   .creative-grid.is-loading > .creative-card{ visibility:hidden; }
+  .creative-grid-empty{ width:100%; text-align:center; color:var(--text-tertiary); font-size:12px; padding:24px 0; }
   .creative-grid.is-loading::after{
     content:''; position:absolute; inset:0; border-radius:var(--radius); pointer-events:none;
     background-image:linear-gradient(90deg, transparent, var(--skeleton-sweep), transparent), linear-gradient(var(--overlay-3), var(--overlay-3));
@@ -455,10 +458,6 @@
         <div class="pillrow" id="platform-pills"></div>
       </div>
       <div class="filterbar-spacer"></div>
-      <div class="compare-pill">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18M7 15l4-4 3 3 5-6"/></svg>
-        <span>Mês atual vs. anterior</span>
-      </div>
     </div>
 
     <div class="content" id="content"></div>
@@ -502,34 +501,6 @@ var BR_STATES = {
   TO:{name:"Tocantins",region:"norte",cx:313.3,cy:190.8,d:"M322.2,176.9 L325.4,182.1 L327.8,183.0 L326.8,185.9 L330.0,191.2 L336.8,192.4 L337.9,191.1 L336.4,194.4 L331.9,196.9 L327.1,204.6 L328.7,207.3 L333.3,208.6 L330.7,208.7 L330.0,211.6 L332.3,211.9 L329.7,213.6 L330.2,217.2 L332.6,218.9 L331.1,220.1 L330.8,224.5 L333.0,224.2 L330.1,225.0 L329.5,223.0 L329.0,224.8 L325.6,224.8 L317.6,228.6 L315.2,226.4 L314.7,230.7 L313.0,228.9 L309.0,228.8 L308.9,226.9 L305.7,228.6 L304.9,226.7 L304.0,228.9 L303.8,225.8 L300.8,222.8 L299.5,224.6 L297.8,222.6 L296.4,223.7 L294.8,228.4 L284.0,223.2 L285.8,217.9 L283.1,219.7 L281.4,223.5 L280.1,223.0 L278.7,206.6 L280.4,197.1 L287.0,180.6 L295.8,169.7 L297.4,162.8 L294.7,159.7 L297.0,156.0 L296.7,152.3 L303.1,149.1 L304.9,145.4 L306.4,145.7 L305.8,143.3 L308.2,140.5 L307.4,138.3 L309.3,136.8 L306.4,133.9 L302.0,133.4 L306.6,131.2 L312.2,132.3 L316.8,135.5 L318.2,144.4 L316.4,152.9 L313.9,155.6 L316.8,156.7 L315.7,158.4 L322.1,165.8 L327.3,163.9 L328.9,165.9 L328.0,169.0 L324.9,169.9 L322.2,176.9 Z"}
 };
 var REGION_LABEL = { norte:'Norte', nordeste:'Nordeste', centrooeste:'Centro-Oeste', sudeste:'Sudeste', sul:'Sul' };
-var CITY_POOL = {
-  norte:['Manaus, AM','Belém, PA','Porto Velho, RO'],
-  nordeste:['Salvador, BA','Recife, PE','Fortaleza, CE','São Luís, MA'],
-  centrooeste:['Brasília, DF','Goiânia, GO','Campo Grande, MS'],
-  sudeste:['São Paulo, SP','Rio de Janeiro, RJ','Belo Horizonte, MG','Vitória, ES'],
-  sul:['Curitiba, PR','Porto Alegre, RS','Florianópolis, SC']
-};
-
-/* ============================================================================
-   DADOS MOCKADOS — estrutura pronta para receber integração real.
-   Cada bloco // TODO indica exatamente onde plugar a fonte de dados real.
-   ============================================================================ */
-function mulberry32(seed){
-  return function(){
-    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
-    var t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-function seriesWithNoise(rng, base, points, volatility, trend){
-  var arr = []; var v = base;
-  for(var i=0;i<points;i++){
-    v = v * (1 + trend) + (rng()-0.5) * base * volatility;
-    arr.push(Math.max(0, Math.round(v)));
-  }
-  return arr;
-}
 function fmtMoney(n){ return 'R$ ' + Math.round(n).toLocaleString('pt-BR'); }
 // pra valores tipicamente menores que R$1 (CPC, CPA, CPM) — fmtMoney arredonda pro inteiro e mostra "R$ 0".
 function fmtMoneyPrecise(n){ return 'R$ ' + n.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}); }
@@ -537,107 +508,38 @@ function fmtNum(n){ return Math.round(n).toLocaleString('pt-BR'); }
 function fmtPct(n,d){ return n.toFixed(typeof d==='number'?d:1).replace('.',',') + '%'; }
 function fmtX(n){ return n.toFixed(1).replace('.',',') + 'x'; }
 function fmtDuration(seconds){ var m = Math.floor(seconds/60), s = Math.round(seconds%60); return m+'m '+s+'s'; }
-function pick(rng, arr){ return arr[Math.floor(rng()*arr.length)]; }
 
-var MONTHS = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+// taxonomia de objetivo de campanha — usada pra CLASSIFICAR campanhas reais (inferObjectiveFromName)
+// e pra montar os botões de filtro da aba Campanhas. Não é dado fabricado, é um rótulo fixo.
 var OBJECTIVES = ['Tráfego','Conversão','Reconhecimento','Engajamento','Vendas'];
-var FIRST_NAMES = ['Receita Josapar','Sabor de Casa','Tradição na Mesa','Sempre no Prato','Nutrição Real','Dia a Dia Melhor','Colheita Certa','Do Campo à Mesa','Momento Família','Escolha Consciente'];
 
 // hasConversion:true = mostra Conversões/CPA/Receita/ROAS. Só o Armazém vende direto (e-commerce);
 // as demais marcas rodam campanhas de Tráfego/Reconhecimento/Engajamento sem pixel de compra —
 // mostram Alcance/Engajamento em vez disso (métricas que fazem sentido pro objetivo real da campanha).
+// hasRegional/hasSocial refletem fonte de dados REAL disponível (GA4 / Windsor.ai) — não é
+// preferência cosmética: se a marca não tem a integração, a aba nem aparece (nunca mostra
+// seção sem nenhum dado real possível). Ver GA4_ENABLED_BRANDS/WINDSOR_ENABLED_BRANDS.
 var BRANDS = {
   tiojoao: { id:'tiojoao', name:'Tio João', short:'Tio João', mark:'TJ', accent:'#D6190D',
-    tag:'Arroz · Linha completa', hasCampaigns:true, hasRegional:true, hasConversion:false, ecommerce:false, invBase:182000, seed:22 },
+    tag:'Arroz · Linha completa', hasCampaigns:true, hasRegional:true, hasSocial:true, hasConversion:false, ecommerce:false },
   josapar: { id:'josapar', name:'Josapar Institucional', short:'Josapar', mark:'JP', accent:'#8B2323',
-    tag:'Marca institucional', hasCampaigns:true, hasRegional:true, hasConversion:false, ecommerce:false, invBase:24000, seed:11 },
+    tag:'Marca institucional', hasCampaigns:true, hasRegional:true, hasSocial:true, hasConversion:false, ecommerce:false },
   suprasoy: { id:'suprasoy', name:'SupraSoy', short:'SupraSoy', mark:'SS', accent:'#6E558E',
-    tag:'Nutrição à base de soja', hasCampaigns:true, hasRegional:true, hasConversion:false, ecommerce:false, invBase:58000, seed:33 },
+    tag:'Nutrição à base de soja', hasCampaigns:true, hasRegional:false, hasSocial:true, hasConversion:false, ecommerce:false },
   meubiju: { id:'meubiju', name:'Meu Biju', short:'Meu Biju', mark:'MB', accent:'#941B0F',
-    tag:'Arroz parboilizado', hasCampaigns:true, hasRegional:true, hasConversion:false, ecommerce:false, invBase:39000, seed:55 },
+    tag:'Arroz parboilizado', hasCampaigns:true, hasRegional:false, hasSocial:true, hasConversion:false, ecommerce:false },
   novaoliva: { id:'novaoliva', name:'Nova Oliva', short:'Nova Oliva', mark:'NO', accent:'#3F7D45',
-    tag:'Azeite · Só engajamento', hasCampaigns:false, hasRegional:false, hasConversion:false, ecommerce:false, invBase:14500, seed:44 },
+    tag:'Azeite · Só engajamento', hasCampaigns:false, hasRegional:false, hasSocial:false, hasConversion:false, ecommerce:false },
   armazem: { id:'armazem', name:'Armazém Tio João', short:'Armazém', mark:'AT', accent:'#D6190D',
-    tag:'E-commerce oficial', hasCampaigns:true, hasRegional:true, hasConversion:true, ecommerce:'migrating', invBase:51000, seed:66 }
+    tag:'E-commerce oficial', hasCampaigns:true, hasRegional:true, hasSocial:false, hasConversion:true, ecommerce:'migrating' }
 };
 var BRAND_ORDER = ['tiojoao','josapar','suprasoy','meubiju','novaoliva','armazem'];
 
-function buildBrandData(brand){
-  var rng = mulberry32(brand.seed);
-  var days = 90;
-  // TODO: conectar Google Ads API + Meta Marketing API (split por plataforma via taxonomia UTM)
-  var invSeriesAll = seriesWithNoise(rng, brand.invBase/30, days, 0.35, 0.002);
-  var metaShare = 0.55, googleShare = 0.45;
-  var impPerReal = 42 + rng()*10;
-  var ctrBase = brand.hasConversion ? (1.1 + rng()*0.9) : (1.6 + rng()*0.7);
-  var cpcBase = 0.55 + rng()*0.6;
-  function platformSlice(mult){ return invSeriesAll.map(function(v){ return v*mult; }); }
-
-  var social = {
-    followers: Math.round(18000 + rng()*140000),
-    growthPct: +(1.5 + rng()*6).toFixed(1),
-    reachSeries: seriesWithNoise(rng, 40000+rng()*80000, 12, 0.25, 0.01),
-    engagementSeries: seriesWithNoise(rng, 3000+rng()*8000, 12, 0.3, 0.015),
-    followersSeries: seriesWithNoise(rng, 16000+rng()*30000, 12, 0.05, 0.01),
-    byFormat: { reels: Math.round(4+rng()*6), feed: Math.round(2+rng()*3), stories: Math.round(1.5+rng()*2.5) },
-    engagementRate: +(1.8+rng()*3.2).toFixed(1),
-    nonFollowerPct: +(35+rng()*40).toFixed(0),
-    clicks: Math.round(1200+rng()*9000),
-    likes: Math.round(2000+rng()*15000),
-    comments: Math.round(100+rng()*1200),
-  };
-
-  var campaigns = [];
-  if(brand.hasCampaigns){
-    var n = 7;
-    for(var i=0;i<n;i++){
-      var platform = rng() > (i%2===0?0.4:0.6) ? 'Meta' : 'Google';
-      var ctr = ctrBase * (0.6+rng()*0.9);
-      var cpc = cpcBase * (0.6+rng()*0.8);
-      var conv = Math.round(80+rng()*900);
-      var roas = +(1.4+rng()*4.2).toFixed(1);
-      var cpm = +(8+rng()*25).toFixed(2);
-      campaigns.push({ name: FIRST_NAMES[i % FIRST_NAMES.length] + (i>=FIRST_NAMES.length?' '+(i+1):''), platform: platform, objective: pick(rng, OBJECTIVES), ctr: ctr, cpc: cpc, conv: conv, roas: roas, cpm: cpm });
-    }
-    campaigns.sort(function(a,b){ return b.conv - a.conv; });
-  }
-
-  function creativeSet(labelPool, metricLabel, metricGen){
-    var items = [];
-    for(var i=0;i<3;i++){
-      items.push({ name: labelPool[i % labelPool.length] + ' — v' + (i+1), metric: metricGen(rng, i), metricLabel: metricLabel, adCount: 1 });
-    }
-    return items;
-  }
-  var creatives = {
-    byCtr: creativeSet(['Criativo Receita','Criativo Sabor','Criativo Família'], 'CTR', function(r,i){ return fmtPct((3.2-i*0.32)+r()*0.4,1); }),
-    byReach: creativeSet(['Post Receita','Post Bastidores','Post Depoimento'], 'Alcance', function(r,i){ return fmtNum(48000-i*4800+r()*4000); }),
-    byEngagement: creativeSet(['Reels Preparo','Post Dica','Story Enquete'], 'Engajamento', function(r,i){ return fmtPct((6.4-i*0.55)+r()*0.5,1); })
-  };
-
-  // ---------- Regional real (por estado) ----------
-  // TODO: conectar geo report do Google Ads / Meta Ads Insights (breakdown por estado)
-  var regionMult = { norte:0.55+rng()*0.3, nordeste:0.9+rng()*0.4, centrooeste:0.6+rng()*0.35, sudeste:1.3+rng()*0.5, sul:1.0+rng()*0.4 };
-  var states = {};
-  var totalRaw = 0;
-  Object.keys(BR_STATES).forEach(function(uf){
-    var st = BR_STATES[uf];
-    var raw = regionMult[st.region] * (0.5 + rng());
-    states[uf] = { raw: raw, growth: -6 + rng()*22 };
-    totalRaw += raw;
-  });
-  Object.keys(states).forEach(function(uf){ states[uf].sharePct = states[uf].raw/totalRaw*100; });
-
-  var cities = [];
-  Object.keys(CITY_POOL).forEach(function(region){
-    CITY_POOL[region].forEach(function(c){ cities.push({ name:c, region:region, reach: (40+rng()*260)*regionMult[region], growth: -5+rng()*24 }); });
-  });
-  cities.sort(function(a,b){ return b.reach-a.reach; });
-  cities = cities.slice(0,6);
-
-  return { invSeriesAll: invSeriesAll, platformSlice: platformSlice, metaShare: metaShare, googleShare: googleShare,
-    impPerReal: impPerReal, ctrBase: ctrBase, cpcBase: cpcBase, social: social, campaigns: campaigns, creatives: creatives,
-    states: states, cities: cities };
+// Shape vazio pro slot de dados de uma marca antes do fetch real completar — NUNCA número
+// fabricado aqui. `states` é o único campo ainda lido diretamente daqui (mountMap, antes do GA4
+// responder); campanhas/criativos/social vêm sempre de REAL_* ou direto da resposta da API.
+function emptyBrandData(){
+  return { states: {} };
 }
 
 var STATE = { brand: BRAND_ORDER[0], section:'midia', period:30, dateFrom:null, dateTo:null, platform:'all', data:{}, charts:{} };
@@ -696,7 +598,7 @@ function switchBrand(id){
   if(STATE.brand===id) return;
   STATE.brand = id;
   var b = BRANDS[id];
-  if(!STATE.data[id]) STATE.data[id] = buildBrandData(b);
+  if(!STATE.data[id]) STATE.data[id] = emptyBrandData();
   document.body.setAttribute('data-brand', id);
   document.querySelectorAll('.dock-icon').forEach(function(el){ el.classList.toggle('active', el.getAttribute('data-brand')===id); });
   updateSidebarLogo(b);
@@ -710,7 +612,8 @@ function switchBrand(id){
 function navSectionIds(b){
   var ids = ['midia'];
   if(b.hasCampaigns) ids.push('campanhas');
-  ids.push('social','criativos');
+  if(b.hasSocial) ids.push('social');
+  ids.push('criativos');
   if(b.hasRegional) ids.push('regional');
   if(b.ecommerce) ids.push('ecommerce');
   if(b.hasCampaigns) ids.push('sazonais');
@@ -800,12 +703,6 @@ document.addEventListener('click', function(e){
   closeCustomRangePanel();
 });
 function setPlatform(p){ STATE.platform = p; renderFilterPills(); renderSection(); }
-function platformMultiplier(){
-  var d = STATE.data[STATE.brand];
-  if(STATE.platform==='meta') return d.metaShare;
-  if(STATE.platform==='google') return d.googleShare;
-  return 1;
-}
 
 /* ============================================================================
    RENDER — SEÇÕES
@@ -851,57 +748,40 @@ function renderSection(){
 }
 
 function accentVar(name){ return getComputedStyle(document.body).getPropertyValue(name).trim(); }
-function kpiDelta(rng){ var v = (rng()-0.35)*24; var up = v >= 0; return {up:up, pct: Math.abs(v).toFixed(1)}; }
 
-function kpiCard(seedOffset, icon, label, value, source, id){
-  var rng = mulberry32(BRANDS[STATE.brand].seed + seedOffset + STATE.period);
-  var d = kpiDelta(rng);
+// kpiCard nasce SEMPRE em estado de carregamento, sem número nenhum — nunca dado fictício.
+// Só existe uma fonte real de "variação vs. período anterior" hoje (GA4, ver
+// loadRealCitiesIfAvailable/analyticsFields) — o slot de delta fica vazio e só aparece nos
+// cards que patchKpiCard popular de verdade com um deltaPct real; os demais nunca mostram seta.
+function kpiCard(icon, label, source, id){
   var idAttr = id ? ' id="kpi-'+id+'"' : '';
   return ''+
-  '<div class="kpi-card '+(d.up?'trend-up':'trend-down')+'"'+idAttr+'>'+
+  '<div class="kpi-card is-loading"'+idAttr+'>'+
     '<div class="kpi-top">'+
       '<div class="kpi-label-wrap"><span class="kpi-label">'+label+'</span>'+(source?'<span class="kpi-source" data-role="source">'+source+'</span>':'')+'</div>'+
       '<div class="kpi-icon">'+iconSvg(icon)+'</div>'+
     '</div>'+
-    '<div class="kpi-value" data-role="value">'+value+'</div>'+
-    '<div class="kpi-delta '+(d.up?'up':'down')+'" data-role="delta">'+iconSvg(d.up?ICONS.up:ICONS.down)+' '+d.pct+'%'+
-      '<span class="kpi-delta-label">vs. mês anterior</span></div>'+
+    '<div class="kpi-value" data-role="value">—</div>'+
+    '<div class="kpi-delta" data-role="delta"></div>'+
   '</div>';
 }
-function periodSlice(arr){ return arr.slice(Math.max(0, arr.length - STATE.period)); }
-function periodLabels(){ var out = []; for(var i=STATE.period;i>0;i--){ out.push(i===1?'hoje':'-'+i+'d'); } return out; }
-
 /* ---------- Mídia ---------- */
 function sectionMidia(b){
-  var d = STATE.data[b.id];
-  var mult = platformMultiplier();
-  var invSlice = periodSlice(d.invSeriesAll).map(function(v){ return v*mult; });
-  var totalInv = invSlice.reduce(function(a,c){return a+c;},0);
-  var totalImp = totalInv * d.impPerReal;
-  var ctr = d.ctrBase * (0.9+ (mult) *0.1);
-  var totalClicks = totalImp * (ctr/100);
-  var cpc = d.cpcBase;
   var src = STATE.platform==='meta' ? 'Meta Ads' : (STATE.platform==='google' ? 'Google Ads' : 'Meta + Google');
   var kpis = '';
-  kpis += kpiCard(1, ICONS.invest, 'Investimento', fmtMoney(totalInv), src, 'media-invest');
-  kpis += kpiCard(2, ICONS.impressions, 'Impressões', fmtNum(totalImp), src, 'media-impressions');
-  kpis += kpiCard(3, ICONS.clicks, 'Cliques', fmtNum(totalClicks), src, 'media-clicks');
-  kpis += kpiCard(4, ICONS.ctr, 'CTR', fmtPct(ctr,2), 'Calculado', 'media-ctr');
-  kpis += kpiCard(5, ICONS.cpc, 'CPC', fmtMoneyPrecise(cpc), 'Calculado', 'media-cpc');
+  kpis += kpiCard(ICONS.invest, 'Investimento', src, 'media-invest');
+  kpis += kpiCard(ICONS.impressions, 'Impressões', src, 'media-impressions');
+  kpis += kpiCard(ICONS.clicks, 'Cliques', src, 'media-clicks');
+  kpis += kpiCard(ICONS.ctr, 'CTR', src, 'media-ctr');
+  kpis += kpiCard(ICONS.cpc, 'CPC', src, 'media-cpc');
   if(b.hasConversion){
-    var conv = totalClicks*0.045;
-    var cpa = totalInv/conv;
-    var revenue = totalInv * (2.1+mult*1.1);
-    var roas = revenue/totalInv;
-    kpis += kpiCard(6, ICONS.conv, 'Conversões', fmtNum(conv), src, 'media-conv');
-    kpis += kpiCard(7, ICONS.cpa, 'CPA', fmtMoneyPrecise(cpa), 'Calculado', 'media-cpa');
-    kpis += kpiCard(8, ICONS.revenue, 'Receita', fmtMoney(revenue), 'Calculado', 'media-revenue');
-    kpis += kpiCard(9, ICONS.roas, 'ROAS', fmtX(roas), 'Calculado', 'media-roas');
+    kpis += kpiCard(ICONS.conv, 'Conversões', src, 'media-conv');
+    kpis += kpiCard(ICONS.cpa, 'CPA', src, 'media-cpa');
+    kpis += kpiCard(ICONS.revenue, 'Receita', src, 'media-revenue');
+    kpis += kpiCard(ICONS.roas, 'ROAS', src, 'media-roas');
   } else {
-    var reach = totalImp*0.62;
-    var engagement = totalClicks*1.8;
-    kpis += kpiCard(6, ICONS.reach, 'Alcance', fmtNum(reach), src, 'media-reach');
-    kpis += kpiCard(7, ICONS.engagement, 'Engajamento', fmtNum(engagement), src, 'media-engagement');
+    kpis += kpiCard(ICONS.reach, 'Alcance', src, 'media-reach');
+    kpis += kpiCard(ICONS.engagement, 'Engajamento', src, 'media-engagement');
   }
 
   return ''+
@@ -910,18 +790,22 @@ function sectionMidia(b){
   '<div class="panel-row">'+
     '<div class="panel">'+
       '<div class="panel-head"><h3>Investimento — série temporal</h3><span>'+STATE.period+' dias</span></div>'+
-      '<div class="chart-box tall"><canvas id="chart-invest"></canvas></div>'+
+      '<div class="chart-box tall is-loading"><canvas id="chart-invest"></canvas>'+
+        '<p id="chart-invest-empty-note" class="empty-note">Sem dados reais de investimento nesse período.</p>'+
+      '</div>'+
     '</div>'+
     '<div class="panel">'+
       '<div class="panel-head"><h3>Breakdown por campanha</h3><span>Top 5</span></div>'+
-      '<div class="chart-box tall"><canvas id="chart-breakdown"></canvas></div>'+
+      '<div class="chart-box tall is-loading"><canvas id="chart-breakdown"></canvas>'+
+        '<p id="chart-breakdown-empty-note" class="empty-note">Sem campanhas com dados nesse período.</p>'+
+      '</div>'+
     '</div>'+
   '</div>'+
   (STATE.platform==='google' ?
     '<div class="panel">'+
       '<div class="panel-head"><h3>Top Keywords (Google Ads · Search)</h3><span id="keywords-badge" class="kpi-source">Google Ads</span></div>'+
       '<div class="chart-box tall is-loading" id="chart-keywords-box"><canvas id="chart-keywords"></canvas>'+
-        '<p id="keywords-empty-note" class="keywords-empty-note">Sem campanhas de pesquisa (Search) no Google Ads pra essa marca neste período — keywords só existem pra esse tipo de campanha.</p>'+
+        '<p id="keywords-empty-note" class="empty-note">Sem campanhas de pesquisa (Search) no Google Ads pra essa marca neste período — keywords só existem pra esse tipo de campanha.</p>'+
       '</div>'+
     '</div>'
   : '')+
@@ -975,9 +859,7 @@ function campaignRowHtml(c, i){
     '<td>'+fmtMoneyPrecise(c.cpm)+'</td></tr>';
 }
 function sectionCampanhas(b){
-  REAL_CAMPAIGNS = null; // toda troca de marca/aba volta a mostrar mock até o fetch real responder
-  var d = STATE.data[b.id];
-  var rows = d.campaigns.map(campaignRowHtml).join('');
+  REAL_CAMPAIGNS = null; // toda troca de marca/aba reseta pro loading até o fetch real responder
   return ''+
   '<div class="section-heading">'+
     '<div><h2>Ranking de campanhas ativas</h2><p>Ordenado por conversões — filtre por objetivo ou plataforma (pills do topo) para refinar</p></div>'+
@@ -986,32 +868,41 @@ function sectionCampanhas(b){
       OBJECTIVES.map(function(o){return '<button class="pp" onclick="filterCampaigns(\''+o+'\', this)">'+o+'</button>';}).join('')+
     '</div>'+
   '</div>'+
-  '<div class="panel"><div class="table-wrap" id="campaigns-table-wrap"><table id="campaigns-table"><thead><tr>'+
+  '<div class="panel"><div class="table-wrap is-loading" id="campaigns-table-wrap"><table id="campaigns-table"><thead><tr>'+
     '<th>#</th><th>Campanha</th><th>Plataforma</th><th>Objetivo</th><th>CTR</th><th>CPC</th><th>Conversões</th><th>CPM</th>'+
-  '</tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+  '</tr></thead><tbody></tbody></table>'+
+    '<p id="campaigns-empty-note" class="empty-note">Nenhuma campanha real encontrada nesse período.</p>'+
+  '</div></div>';
 }
 function filterCampaigns(objective, btn){
   document.querySelectorAll('#objective-pills .pp').forEach(function(p){ p.classList.remove('active'); });
   if(btn) btn.classList.add('active');
-  var source = REAL_CAMPAIGNS || STATE.data[STATE.brand].campaigns;
+  var source = REAL_CAMPAIGNS || [];
   var rows = source.filter(function(c){ return objective==='all' || c.objective===objective; })
     .map(campaignRowHtml).join('');
   document.querySelector('#campaigns-table tbody').innerHTML = rows || '<tr><td colspan="8" style="color:var(--text-tertiary);text-align:center;padding:24px;">Nenhuma campanha com esse objetivo no período.</td></tr>';
 }
+// Resolve a tabela de Campanhas pra um estado explícito de "sem dado real" — nunca deixa presa
+// em loading nem mostra linha antiga por baixo.
+function resolveCampaignsEmpty(){
+  var wrapEl = document.getElementById('campaigns-table-wrap');
+  if(wrapEl) wrapEl.classList.remove('is-loading');
+  var note = document.getElementById('campaigns-empty-note');
+  if(note) note.classList.add('show');
+  var tbody = document.querySelector('#campaigns-table tbody');
+  if(tbody) tbody.innerHTML = '';
+}
 function loadRealCampaignsIfAvailable(brandId, days){
   var wantMeta = META_ENABLED_BRANDS[brandId] && STATE.platform!=='google';
   var wantGoogle = GOOGLE_ENABLED_BRANDS[brandId] && STATE.platform!=='meta';
-  if(!wantMeta && !wantGoogle) return;
+  if(!wantMeta && !wantGoogle){ resolveCampaignsEmpty(); return; }
   var requestBrand = STATE.brand, requestSection = STATE.section, requestPlatform = STATE.platform;
-  var wrapEl = document.getElementById('campaigns-table-wrap');
-  if(wrapEl) wrapEl.classList.add('is-loading');
   var qs = rangeQueryString(days);
   Promise.all([
     wantMeta ? fetch('/api/meta?brand='+brandId+'&'+qs).then(function(r){ return r.ok ? r.json() : null; }).catch(function(){ return null; }) : Promise.resolve(null),
     wantGoogle ? fetch('/api/googleads?brand='+brandId+'&'+qs).then(function(r){ return r.ok ? r.json() : null; }).catch(function(){ return null; }) : Promise.resolve(null),
   ]).then(function(results){
     if(STATE.brand!==requestBrand || STATE.section!==requestSection || STATE.platform!==requestPlatform) return;
-    if(wrapEl) wrapEl.classList.remove('is-loading');
     var meta = results[0], google = results[1];
     var cpmOf = function(c){ return c.impressions>0 ? (c.spend/c.impressions)*1000 : 0; };
     var metaCampaigns = (meta && meta.matchedCampaignsCount) ? meta.campaigns.map(function(c){
@@ -1021,7 +912,9 @@ function loadRealCampaignsIfAvailable(brandId, days){
       return { name:c.name, platform:'Google', objective:inferObjectiveFromName(c.name), ctr:c.ctr, cpc:c.cpc, conv:c.conversions, cpm:cpmOf(c) };
     }) : [];
     var all = metaCampaigns.concat(googleCampaigns).sort(function(a,b){ return b.conv-a.conv || b.ctr-a.ctr; });
-    if(!all.length) return; // nenhuma campanha real da marca no período em nenhuma fonte — mantém mock
+    if(!all.length){ resolveCampaignsEmpty(); return; } // nenhuma campanha real da marca nesse período em nenhuma fonte
+    var wrapEl = document.getElementById('campaigns-table-wrap');
+    if(wrapEl) wrapEl.classList.remove('is-loading');
     REAL_CAMPAIGNS = all;
     var activeBtn = document.querySelector('#objective-pills .pp.active');
     var activeObjective = activeBtn ? (activeBtn.textContent==='Todos' ? 'all' : activeBtn.textContent) : 'all';
@@ -1071,7 +964,13 @@ function sectionSazonais(b){
 function loadRealSazonaisIfAvailable(brandId, days){
   var wantMeta = META_ENABLED_BRANDS[brandId] && STATE.platform!=='google';
   var wantGoogle = GOOGLE_ENABLED_BRANDS[brandId] && STATE.platform!=='meta';
-  if(!wantMeta && !wantGoogle) return;
+  if(!wantMeta && !wantGoogle){
+    var wrapElEarly = document.getElementById('sazonais-table-wrap');
+    if(wrapElEarly) wrapElEarly.classList.remove('is-loading');
+    var emptyNoteElEarly = document.getElementById('sazonais-empty-note');
+    if(emptyNoteElEarly) emptyNoteElEarly.style.display = 'block';
+    return;
+  }
   var requestBrand = STATE.brand, requestSection = STATE.section, requestPlatform = STATE.platform;
   var wrapEl = document.getElementById('sazonais-table-wrap');
   if(wrapEl) wrapEl.classList.add('is-loading');
@@ -1111,27 +1010,26 @@ function loadRealSazonaisIfAvailable(brandId, days){
 
 /* ---------- Social ---------- */
 function sectionSocial(b){
-  var d = STATE.data[b.id].social;
+  // % não-seguidores removido — Windsor.ai não tem esse campo em nenhuma marca, nunca teria dado real.
   var kpis = '';
-  kpis += kpiCard(11, ICONS.followers, 'Seguidores totais', fmtNum(d.followers), 'Instagram', 'social-followers');
-  kpis += kpiCard(12, ICONS.growth, 'Crescimento', fmtPct(d.growthPct), 'Instagram', 'social-growth');
-  kpis += kpiCard(13, ICONS.reach, 'Alcance', fmtNum(d.reachSeries[d.reachSeries.length-1]), 'Windsor.ai', 'social-reach');
-  kpis += kpiCard(14, ICONS.likes, 'Curtidas', fmtNum(d.likes), 'Windsor.ai', 'social-likes');
-  kpis += kpiCard(15, ICONS.engagement, 'Engajamento', fmtNum(d.engagementSeries[d.engagementSeries.length-1]), 'Instagram', 'social-engagement');
-  kpis += kpiCard(16, ICONS.engRate, 'Taxa de engajamento', fmtPct(d.engagementRate), 'Calculado', 'social-engrate');
-  kpis += kpiCard(17, ICONS.nonFollower, '% não seguidores', fmtPct(d.nonFollowerPct,0), 'Instagram', 'social-nonfollower');
-  kpis += kpiCard(18, ICONS.comments, 'Comentários', fmtNum(d.comments), 'Windsor.ai', 'social-comments');
+  kpis += kpiCard(ICONS.followers, 'Seguidores totais', 'Instagram', 'social-followers');
+  kpis += kpiCard(ICONS.growth, 'Crescimento', 'Instagram', 'social-growth');
+  kpis += kpiCard(ICONS.reach, 'Alcance', 'Windsor.ai', 'social-reach');
+  kpis += kpiCard(ICONS.likes, 'Curtidas', 'Windsor.ai', 'social-likes');
+  kpis += kpiCard(ICONS.engagement, 'Engajamento', 'Instagram', 'social-engagement');
+  kpis += kpiCard(ICONS.engRate, 'Taxa de engajamento', 'Calculado', 'social-engrate');
+  kpis += kpiCard(ICONS.comments, 'Comentários', 'Windsor.ai', 'social-comments');
 
   return ''+
   '<div class="section-heading"><div><h2>Indicadores-chave</h2><p>Fonte: Supermetrics/Windsor.ai — conector de social orgânico</p></div></div>'+
   '<div class="kpi-grid">'+kpis+'</div>'+
   '<div class="panel-row">'+
-    '<div class="panel"><div class="panel-head"><h3>Crescimento de seguidores</h3><span>12 meses</span></div><div class="chart-box"><canvas id="chart-followers"></canvas></div></div>'+
-    '<div class="panel"><div class="panel-head"><h3>Engajamento por formato</h3><span>Média mensal</span></div><div class="chart-box"><canvas id="chart-format"></canvas></div></div>'+
+    '<div class="panel"><div class="panel-head"><h3>Crescimento de seguidores</h3><span>Período</span></div><div class="chart-box is-loading"><canvas id="chart-followers"></canvas><p id="chart-followers-empty-note" class="empty-note">Sem dados reais nesse período.</p></div></div>'+
+    '<div class="panel"><div class="panel-head"><h3>Engajamento por formato</h3><span>Média do período</span></div><div class="chart-box is-loading"><canvas id="chart-format"></canvas><p id="chart-format-empty-note" class="empty-note">Sem dado de formato nesse período.</p></div></div>'+
   '</div>'+
   '<div class="panel">'+
-    '<div class="panel-head"><h3>Alcance vs. engajamento</h3><span>Evolução mensal</span></div>'+
-    '<div class="chart-box"><canvas id="chart-reach-eng"></canvas></div>'+
+    '<div class="panel-head"><h3>Alcance vs. engajamento</h3><span>Evolução do período</span></div>'+
+    '<div class="chart-box is-loading"><canvas id="chart-reach-eng"></canvas><p id="chart-reach-eng-empty-note" class="empty-note">Sem dados reais nesse período.</p></div>'+
     '<div class="legend-row"><div class="legend-item"><span class="legend-dot" style="background:var(--accent-text)"></span>Alcance</div>'+
     '<div class="legend-item"><span class="legend-dot" style="background:var(--chart-line-muted)"></span>Engajamento</div></div>'+
   '</div>';
@@ -1155,18 +1053,19 @@ function creativeCards(items){
 }
 function renderCreativeGrid(elId, list){
   var el = document.getElementById(elId);
-  if(el) el.innerHTML = creativeCards((list || []).slice(0, 3));
+  if(!el) return;
+  var items = (list || []).slice(0, 3);
+  el.innerHTML = items.length ? creativeCards(items) : '<p class="creative-grid-empty">Nenhum criativo com dados suficientes nesse período.</p>';
 }
 function sectionCriativos(b){
-  REAL_CREATIVES = null; // toda troca de marca/aba volta a mostrar mock até o fetch real responder
-  var c = STATE.data[b.id].creatives;
+  REAL_CREATIVES = null; // toda troca de marca/aba reseta pro loading até o fetch real responder
   var blocks = ''+
     '<div class="section-heading">'+
       '<div><h2>Top 3 criativos por métrica</h2><p>Peças duplicadas (mesmo criativo subido mais de uma vez) são agrupadas — o selo ×N mostra quantos anúncios foram somados</p></div>'+
     '</div>';
-  blocks += '<div class="creative-block"><div class="creative-block-title">'+iconSvg(ICONS.ctr)+'Top 3 Criativos por CTR<span id="creatives-badge" class="kpi-source" style="margin-left:8px;">mídia (mock)</span></div><div class="creative-grid" id="creative-grid-ctr">'+creativeCards(c.byCtr.slice(0,3))+'</div></div>';
-  blocks += '<div class="creative-block"><div class="creative-block-title">'+iconSvg(ICONS.reach)+'Top 3 Criativos por Alcance</div><div class="creative-grid" id="creative-grid-reach">'+creativeCards(c.byReach.slice(0,3))+'</div></div>';
-  blocks += '<div class="creative-block"><div class="creative-block-title">'+iconSvg(ICONS.engagement)+'Top 3 Criativos por Engajamento</div><div class="creative-grid" id="creative-grid-engagement">'+creativeCards(c.byEngagement.slice(0,3))+'</div></div>';
+  blocks += '<div class="creative-block"><div class="creative-block-title">'+iconSvg(ICONS.ctr)+'Top 3 Criativos por CTR<span id="creatives-badge" class="kpi-source" style="margin-left:8px;">carregando…</span></div><div class="creative-grid is-loading" id="creative-grid-ctr"></div></div>';
+  blocks += '<div class="creative-block"><div class="creative-block-title">'+iconSvg(ICONS.reach)+'Top 3 Criativos por Alcance</div><div class="creative-grid is-loading" id="creative-grid-reach"></div></div>';
+  blocks += '<div class="creative-block"><div class="creative-block-title">'+iconSvg(ICONS.engagement)+'Top 3 Criativos por Engajamento</div><div class="creative-grid is-loading" id="creative-grid-engagement"></div></div>';
   return blocks;
 }
 
@@ -1203,14 +1102,29 @@ function regionNameToUf(name){
   var norm = (name||'').toLowerCase().replace(/^state of /,'').replace(/^estado de /,'').trim();
   return GA4_REGION_TO_UF[norm] || null;
 }
+var ANALYTICS_KPI_IDS = ['analytics-users','analytics-sessions','analytics-engaged','analytics-bounce','analytics-duration','analytics-pageviews'];
 function loadRealCitiesIfAvailable(brandId, days){
-  if(!GA4_ENABLED_BRANDS[brandId]) return;
-  var requestBrand = STATE.brand, requestSection = STATE.section;
   var badgeElLoad = document.getElementById('city-source-badge');
   var listElLoad = document.getElementById('city-rows') && document.getElementById('city-rows').closest('.city-list');
   var mapWrapEl = document.querySelector('.br-map-wrap');
   var regionWrapEl = document.getElementById('region-table-wrap');
   var regionBadgeEl = document.getElementById('region-source-badge');
+  var regionEmptyNote = document.getElementById('region-empty-note');
+  // Resolve tudo (cidades, mapa, tabela regional, 6 KPIs de analytics) pro estado "sem dado real"
+  // — chamado sempre que a marca não tem GA4, ou a busca falha/vem vazia. Nunca deixa preso.
+  function resolveRegionalEmpty(note){
+    if(listElLoad){ listElLoad.classList.remove('is-loading'); }
+    var rowsEl = document.getElementById('city-rows');
+    if(rowsEl) rowsEl.innerHTML = renderCityRows([]);
+    if(badgeElLoad) badgeElLoad.textContent = note || 'sem dados no período';
+    if(mapWrapEl) mapWrapEl.classList.remove('is-loading');
+    if(regionWrapEl) regionWrapEl.classList.remove('is-loading');
+    if(regionEmptyNote) regionEmptyNote.classList.add('show');
+    if(regionBadgeEl) regionBadgeEl.textContent = note || 'sem dados no período';
+    ANALYTICS_KPI_IDS.forEach(function(id){ patchKpiCardEmpty(id, 'sem dado no período'); });
+  }
+  if(!GA4_ENABLED_BRANDS[brandId]){ resolveRegionalEmpty(); return; } // aba Regional já nem existe pra marca sem GA4 (ver hasRegional)
+  var requestBrand = STATE.brand, requestSection = STATE.section;
   if(badgeElLoad) badgeElLoad.textContent = 'carregando…';
   if(listElLoad) listElLoad.classList.add('is-loading');
   if(mapWrapEl) mapWrapEl.classList.add('is-loading');
@@ -1226,73 +1140,74 @@ function loadRealCitiesIfAvailable(brandId, days){
       var rowsEl = document.getElementById('city-rows');
       var badgeEl = document.getElementById('city-source-badge');
       var noteEl = document.getElementById('city-source-note');
-      if(rowsEl && data.cities){
-        rowsEl.innerHTML = renderCityRows(data.cities, 'users', 'usuários (GA4)');
-        if(badgeEl){ badgeEl.textContent = 'GA4 · dados reais'; badgeEl.style.color = 'var(--success)'; badgeEl.style.borderColor = 'rgba(61,220,132,0.3)'; }
-        if(noteEl){ noteEl.textContent = 'Usuários por cidade — Google Analytics 4, últimos '+days+' dias.'; }
+      var cities = data.cities || [];
+      if(rowsEl) rowsEl.innerHTML = renderCityRows(cities, 'users', 'usuários (GA4)');
+      if(badgeEl){
+        if(cities.length){ badgeEl.textContent = 'GA4 · dados reais'; badgeEl.style.color = 'var(--success)'; badgeEl.style.borderColor = 'rgba(61,220,132,0.3)'; }
+        else { badgeEl.textContent = 'sem dados no período'; badgeEl.style.color = ''; badgeEl.style.borderColor = ''; }
       }
+      if(noteEl && cities.length){ noteEl.textContent = 'Usuários por cidade — Google Analytics 4, últimos '+days+' dias.'; }
 
-      if(data.kpis){
-        var k = data.kpis;
-        var analyticsFields = [
-          ['analytics-users', k.users, fmtNum],
-          ['analytics-sessions', k.sessions, fmtNum],
-          ['analytics-engaged', k.engagedSessions, fmtNum],
-          ['analytics-bounce', k.bounceRate, function(v){ return fmtPct(v,1); }],
-          ['analytics-duration', k.avgSessionDuration, fmtDuration],
-          ['analytics-pageviews', k.pageViews, fmtNum],
-        ];
-        analyticsFields.forEach(function(f){
-          var id = f[0], metric = f[1], fmt = f[2];
-          var card = document.getElementById('kpi-'+id);
-          if(card && metric){ card.classList.remove('is-loading'); patchKpiCard(id, fmt(metric.value), metric.delta, 'GA4 · real'); }
-        });
-      }
+      var k = data.kpis || {};
+      var analyticsFields = [
+        ['analytics-users', k.users, fmtNum],
+        ['analytics-sessions', k.sessions, fmtNum],
+        ['analytics-engaged', k.engagedSessions, fmtNum],
+        ['analytics-bounce', k.bounceRate, function(v){ return fmtPct(v,1); }],
+        ['analytics-duration', k.avgSessionDuration, fmtDuration],
+        ['analytics-pageviews', k.pageViews, fmtNum],
+      ];
+      analyticsFields.forEach(function(f){
+        var id = f[0], metric = f[1], fmt = f[2];
+        if(metric) patchKpiCard(id, fmt(metric.value), metric.delta, 'GA4 · real');
+        else patchKpiCardEmpty(id, 'sem dado no período');
+      });
 
-      if(data.regions && data.regions.length){
-        var byUf = {}, total = 0;
-        data.regions.forEach(function(r){
-          var uf = regionNameToUf(r.name);
-          if(!uf) return; // não é estado do Brasil (bot/VPN) — descarta
-          byUf[uf] = (byUf[uf]||0) + r.users;
-          total += r.users;
-        });
+      var byUf = {}, total = 0;
+      (data.regions || []).forEach(function(r){
+        var uf = regionNameToUf(r.name);
+        if(!uf) return; // não é estado do Brasil (bot/VPN) — descarta
+        byUf[uf] = (byUf[uf]||0) + r.users;
+        total += r.users;
+      });
+      if(total > 0){
         var byUfPrev = {};
         (data.regionsPrev||[]).forEach(function(r){
           var uf = regionNameToUf(r.name);
           if(!uf) return;
           byUfPrev[uf] = (byUfPrev[uf]||0) + r.users;
         });
-        if(total > 0){
-          var realStates = {};
-          Object.keys(BR_STATES).forEach(function(uf){
-            var cur = byUf[uf] || 0;
-            var prev = byUfPrev[uf] || 0;
-            var growth = prev > 0 ? ((cur-prev)/prev)*100 : (cur > 0 ? 100 : 0);
-            realStates[uf] = { sharePct: cur ? (cur/total)*100 : 0, growth: growth };
-          });
-          STATE.data[brandId].states = realStates;
-          mountMap(BRANDS[brandId]);
-          var tbodyEl = document.getElementById('region-ranking-tbody');
-          if(tbodyEl) tbodyEl.innerHTML = buildRegionTableRows(realStates);
-          if(regionBadgeEl){ regionBadgeEl.textContent = 'GA4 · dados reais'; regionBadgeEl.style.color = 'var(--success)'; regionBadgeEl.style.borderColor = 'rgba(61,220,132,0.3)'; }
-        }
+        var realStates = {};
+        Object.keys(BR_STATES).forEach(function(uf){
+          var cur = byUf[uf] || 0;
+          var prev = byUfPrev[uf] || 0;
+          var growth = prev > 0 ? ((cur-prev)/prev)*100 : (cur > 0 ? 100 : 0);
+          realStates[uf] = { sharePct: cur ? (cur/total)*100 : 0, growth: growth };
+        });
+        STATE.data[brandId].states = realStates;
+        mountMap(BRANDS[brandId]);
+        if(regionEmptyNote) regionEmptyNote.classList.remove('show');
+        var tbodyEl = document.getElementById('region-ranking-tbody');
+        if(tbodyEl) tbodyEl.innerHTML = buildRegionTableRows(realStates);
+        if(regionBadgeEl){ regionBadgeEl.textContent = 'GA4 · dados reais'; regionBadgeEl.style.color = 'var(--success)'; regionBadgeEl.style.borderColor = 'rgba(61,220,132,0.3)'; }
+      } else {
+        if(regionEmptyNote) regionEmptyNote.classList.add('show');
+        if(regionBadgeEl) regionBadgeEl.textContent = 'sem dados no período';
       }
     })
-    .catch(function(){
-      if(listElLoad) listElLoad.classList.remove('is-loading');
-      if(mapWrapEl) mapWrapEl.classList.remove('is-loading');
-      if(regionWrapEl) regionWrapEl.classList.remove('is-loading');
-      if(badgeElLoad) badgeElLoad.textContent = 'mídia (mock)';
-      /* sem backend (ex: aberto como arquivo local) — mantém mock, sem erro visível */
-    });
+    .catch(function(){ resolveRegionalEmpty(); });
 }
 
 /* ---------- Windsor.ai (Instagram orgânico, quando disponível) ---------- */
 var WINDSOR_ENABLED_BRANDS = { josapar:true, tiojoao:true, suprasoy:true, meubiju:true };
+// Único jeito de um KPI card sair do estado de carregamento: ou patchKpiCard (achou dado real)
+// ou patchKpiCardEmpty (buscou e não achou) — nunca fica preso em loading, nunca mostra número
+// inventado. deltaPct só deve ser passado quando for uma variação REAL calculada pela fonte
+// (hoje só GA4 faz isso); os demais loaders sempre passam null e o card fica sem seta.
 function patchKpiCard(id, value, deltaPct, sourceLabel){
   var card = document.getElementById('kpi-'+id);
   if(!card) return;
+  card.classList.remove('is-loading');
   var valEl = card.querySelector('[data-role="value"]');
   if(valEl) valEl.textContent = value;
   var srcEl = card.querySelector('[data-role="source"]');
@@ -1303,7 +1218,16 @@ function patchKpiCard(id, value, deltaPct, sourceLabel){
   var up = deltaPct >= 0;
   card.classList.remove('trend-up','trend-down'); card.classList.add(up?'trend-up':'trend-down');
   deltaEl.classList.remove('up','down'); deltaEl.classList.add(up?'up':'down');
-  deltaEl.innerHTML = iconSvg(up?ICONS.up:ICONS.down)+' '+Math.abs(deltaPct).toFixed(1)+'%<span class="kpi-delta-label">vs. mês anterior</span>';
+  deltaEl.innerHTML = iconSvg(up?ICONS.up:ICONS.down)+' '+Math.abs(deltaPct).toFixed(1)+'%<span class="kpi-delta-label">vs. período anterior</span>';
+}
+function patchKpiCardEmpty(id, note){
+  var card = document.getElementById('kpi-'+id);
+  if(!card) return;
+  card.classList.remove('is-loading');
+  var valEl = card.querySelector('[data-role="value"]');
+  if(valEl) valEl.textContent = '—';
+  var srcEl = card.querySelector('[data-role="source"]');
+  if(srcEl) srcEl.textContent = note || 'sem dados no período';
 }
 var SOCIAL_KPI_IDS = ['social-followers','social-growth','social-reach','social-likes','social-engagement','social-engrate','social-comments'];
 var SOCIAL_CHART_IDS = ['chart-followers','chart-format','chart-reach-eng'];
@@ -1311,42 +1235,61 @@ function setSocialLoading(on){
   SOCIAL_KPI_IDS.forEach(function(id){ var el = document.getElementById('kpi-'+id); if(el) el.classList.toggle('is-loading', on); });
   SOCIAL_CHART_IDS.forEach(function(id){ var canvas = document.getElementById(id); var box = canvas && canvas.closest('.chart-box'); if(box) box.classList.toggle('is-loading', on); });
 }
+// tira um chart-box de loading e mostra dado real (updateFn) OU a nota vazia — nunca deixa
+// preso, nunca mostra fabricado.
+function resolveChartOrEmpty(canvasId, hasData, updateFn){
+  var canvas = document.getElementById(canvasId);
+  var box = canvas && canvas.closest('.chart-box');
+  if(box) box.classList.remove('is-loading');
+  var note = document.getElementById(canvasId+'-empty-note');
+  if(hasData){ if(note) note.classList.remove('show'); updateFn(); }
+  else if(note) note.classList.add('show');
+}
+function resolveSocialEmpty(){
+  SOCIAL_KPI_IDS.forEach(function(id){ patchKpiCardEmpty(id, 'sem dados no período'); });
+  SOCIAL_CHART_IDS.forEach(function(id){ resolveChartOrEmpty(id, false, function(){}); });
+}
 function loadRealSocialIfAvailable(brandId, days){
-  if(!WINDSOR_ENABLED_BRANDS[brandId]) return;
+  if(!WINDSOR_ENABLED_BRANDS[brandId]) return; // aba Social já nem existe pra marca sem Windsor (ver hasSocial)
   var requestBrand = STATE.brand, requestSection = STATE.section;
   setSocialLoading(true);
   fetch('/api/windsor?brand='+brandId+'&'+rangeQueryString(days))
     .then(function(r){ if(!r.ok) throw new Error('http '+r.status); return r.json(); })
     .then(function(data){
       if(STATE.brand!==requestBrand || STATE.section!==requestSection) return; // usuário já trocou de marca/aba
-      setSocialLoading(false);
       var k = data.kpis || {};
-      patchKpiCard('social-followers', fmtNum(k.followers), k.growthPct, 'Windsor.ai · real');
-      patchKpiCard('social-growth', fmtPct(k.growthPct), null, 'Windsor.ai · real');
-      patchKpiCard('social-reach', fmtNum(k.reach), null, 'Windsor.ai · real');
-      patchKpiCard('social-likes', fmtNum(k.likes), null, 'Windsor.ai · real');
-      patchKpiCard('social-engagement', fmtNum(k.engagement), null, 'Windsor.ai · real');
-      patchKpiCard('social-engrate', fmtPct(k.engagementRate), null, 'Windsor.ai · real');
-      patchKpiCard('social-comments', fmtNum(k.comments), null, 'Windsor.ai · real');
-      // % não seguidores: sem campo real disponível no Windsor.ai — mantém mock
+      var kpiFields = [
+        ['social-followers', k.followers, fmtNum, k.growthPct],
+        ['social-growth', k.growthPct, fmtPct, null],
+        ['social-reach', k.reach, fmtNum, null],
+        ['social-likes', k.likes, fmtNum, null],
+        ['social-engagement', k.engagement, fmtNum, null],
+        ['social-engrate', k.engagementRate, fmtPct, null],
+        ['social-comments', k.comments, fmtNum, null],
+      ];
+      kpiFields.forEach(function(f){
+        var id = f[0], val = f[1], fmt = f[2], delta = f[3];
+        if(val===undefined || val===null) patchKpiCardEmpty(id, 'sem dado no período');
+        else patchKpiCard(id, fmt(val), delta, 'Windsor.ai · real');
+      });
 
-      if(data.followersSeries && data.followersSeries.values.length && STATE.charts.followers){
+      resolveChartOrEmpty('chart-followers', !!(data.followersSeries && data.followersSeries.values && data.followersSeries.values.length && STATE.charts.followers), function(){
         STATE.charts.followers.data.labels = data.followersSeries.labels;
         STATE.charts.followers.data.datasets[0].data = data.followersSeries.values;
         STATE.charts.followers.update();
-      }
-      if(data.byFormat && STATE.charts.format){
+      });
+      resolveChartOrEmpty('chart-format', !!(data.byFormat && STATE.charts.format), function(){
         STATE.charts.format.data.datasets[0].data = [data.byFormat.reels, data.byFormat.feed, data.byFormat.stories];
         STATE.charts.format.update();
-      }
-      if(data.timeline && data.timeline.labels.length && STATE.charts.reachEng){
+      });
+      resolveChartOrEmpty('chart-reach-eng', !!(data.timeline && data.timeline.labels && data.timeline.labels.length && STATE.charts.reachEng), function(){
         STATE.charts.reachEng.data.labels = data.timeline.labels;
         STATE.charts.reachEng.data.datasets[0].data = data.timeline.reach;
         STATE.charts.reachEng.data.datasets[1].data = data.timeline.engagement;
         STATE.charts.reachEng.update();
-      }
+      });
     })
-    .catch(function(){ setSocialLoading(false); /* sem backend ou API key ausente — mantém mock, sem erro visível */ });
+    .catch(function(){ resolveSocialEmpty(); /* sem backend ou API key ausente — sem dado real, nunca mostra mock */ });
 }
 
 /* ---------- Meta Ads + Google Ads (mídia paga real, quando disponível) ---------- */
@@ -1370,13 +1313,48 @@ var CREATIVE_GRID_IDS = ['creative-grid-ctr','creative-grid-reach','creative-gri
 function setCreativeGridsLoading(on){
   CREATIVE_GRID_IDS.forEach(function(id){ var el = document.getElementById(id); if(el) el.classList.toggle('is-loading', on); });
 }
+// Resolve todo card/chart de Mídia pra um estado explícito de "sem dado" — chamado em todo
+// caminho onde a busca real não vai (ou não vem) trazer nada, nunca deixa preso em loading nem
+// com o valor de uma tentativa anterior.
+function resolveMediaEmpty(){
+  MEDIA_KPI_IDS_CONV.concat(MEDIA_KPI_IDS_NOCONV).forEach(function(id){ patchKpiCardEmpty(id, 'sem dados no período'); });
+  MEDIA_CHART_IDS.forEach(function(canvasId){
+    var canvas = document.getElementById(canvasId);
+    var box = canvas && canvas.closest('.chart-box');
+    if(box) box.classList.remove('is-loading');
+    var note = document.getElementById(canvasId+'-empty-note');
+    if(note) note.classList.add('show');
+  });
+  // demografia + keywords nascem em .is-loading com badge "aguardando" — sem isso aqui, ficariam
+  // presas girando pra sempre nesse caminho (nunca chegam a rodar patchSimpleChart).
+  [['chart-age-box','demo-age-badge'],['chart-gender-box','demo-gender-badge'],['chart-device-box','demo-device-badge'],['chart-hour-box','demo-hour-badge']].forEach(function(pair){
+    var box = document.getElementById(pair[0]);
+    if(box) box.classList.remove('is-loading');
+    var badge = document.getElementById(pair[1]);
+    if(badge) badge.textContent = 'sem dado no período';
+  });
+  var kwBox = document.getElementById('chart-keywords-box');
+  if(kwBox) kwBox.classList.remove('is-loading');
+  var kwBadge = document.getElementById('keywords-badge');
+  if(kwBadge) kwBadge.textContent = 'Google Ads';
+  var kwNote = document.getElementById('keywords-empty-note');
+  if(kwNote) kwNote.classList.add('show');
+}
+function resolveCreativeGridsEmpty(){
+  CREATIVE_GRID_IDS.forEach(function(id){
+    var el = document.getElementById(id);
+    if(!el) return;
+    el.classList.remove('is-loading');
+    el.innerHTML = '<p class="creative-grid-empty">Nenhum criativo com dados suficientes nesse período.</p>';
+  });
+}
 function loadRealMediaIfAvailable(brandId, days){
   // Criativos não tem filtro de Plataforma na tela (só existe via Meta hoje) — não deixa um
   // filtro Google/Meta escolhido em Mídia "vazar" e esconder os criativos quando o usuário troca de aba.
   var isCriativos = STATE.section==='criativos';
   var wantMeta = META_ENABLED_BRANDS[brandId] && (isCriativos || STATE.platform!=='google');
   var wantGoogle = !isCriativos && GOOGLE_ENABLED_BRANDS[brandId] && STATE.platform!=='meta';
-  if(!wantMeta && !wantGoogle) return;
+  if(!wantMeta && !wantGoogle){ resolveMediaEmpty(); resolveCreativeGridsEmpty(); return; }
   var requestBrand = STATE.brand, requestSection = STATE.section, requestPlatform = STATE.platform;
   setMediaLoading(true);
   setCreativeGridsLoading(true);
@@ -1390,12 +1368,12 @@ function loadRealMediaIfAvailable(brandId, days){
     wantGoogle ? fetch('/api/googleads?brand='+brandId+'&'+qs+'&demographics=1').then(function(r){ return r.ok ? r.json() : null; }).catch(function(){ return null; }) : Promise.resolve(null),
   ]).then(function(results){
     if(STATE.brand!==requestBrand || STATE.section!==requestSection || STATE.platform!==requestPlatform) return;
-    setMediaLoading(false);
-    setCreativeGridsLoading(false);
     var meta = results[0], google = results[1];
     var metaOk = meta && meta.matchedCampaignsCount;
     var googleOk = google && google.matchedCampaignsCount;
-    if(!metaOk && !googleOk) return; // sem campanha real da marca no período em nenhuma fonte — mantém mock
+    if(!metaOk && !googleOk){ resolveMediaEmpty(); resolveCreativeGridsEmpty(); return; } // sem campanha real da marca nesse período em nenhuma fonte
+    setMediaLoading(false);
+    setCreativeGridsLoading(false);
 
     var sourceLabel = (metaOk && googleOk) ? 'Meta + Google · real' : (metaOk ? 'Meta Ads · real' : 'Google Ads · real');
     var mk = metaOk ? meta.kpis : { spend:0, impressions:0, clicks:0, conversions:0, revenue:0 };
@@ -1436,18 +1414,22 @@ function loadRealMediaIfAvailable(brandId, days){
     }
 
     var timeline = mergeTimelines(metaOk?meta.timeline:null, googleOk?google.timeline:null);
+    var investNote = document.getElementById('chart-invest-empty-note');
     if(timeline.labels.length && STATE.charts.invest){
+      if(investNote) investNote.classList.remove('show');
       STATE.charts.invest.data.labels = timeline.labels;
       STATE.charts.invest.data.datasets[0].data = timeline.values;
       STATE.charts.invest.update();
-    }
+    } else if(investNote) investNote.classList.add('show');
     var allCampaigns = (metaOk?meta.campaigns:[]).concat(googleOk?google.campaigns:[]).sort(function(a,b){ return b.spend-a.spend; });
+    var breakdownNote = document.getElementById('chart-breakdown-empty-note');
     if(allCampaigns.length && STATE.charts.breakdown){
+      if(breakdownNote) breakdownNote.classList.remove('show');
       var top = allCampaigns.slice(0,5);
       STATE.charts.breakdown.data.labels = top.map(function(c){ return c.name.length>14 ? c.name.slice(0,14)+'…' : c.name; });
       STATE.charts.breakdown.data.datasets[0].data = top.map(function(c){ return c.spend; });
       STATE.charts.breakdown.update();
-    }
+    } else if(breakdownNote) breakdownNote.classList.add('show');
 
     var kwBox = document.getElementById('chart-keywords-box');
     var kwEmptyNote = document.getElementById('keywords-empty-note');
@@ -1488,6 +1470,10 @@ function loadRealMediaIfAvailable(brandId, days){
       renderCreativeGrid('creative-grid-reach', REAL_CREATIVES.byReach);
       renderCreativeGrid('creative-grid-engagement', REAL_CREATIVES.byEngagement);
       if(creativesBadge){ creativesBadge.textContent = 'Meta Ads · real'; creativesBadge.style.color = 'var(--success)'; creativesBadge.style.borderColor = 'rgba(61,220,132,0.3)'; }
+    } else if(document.getElementById('creative-grid-ctr')){
+      // estamos na aba Criativos mas o Meta não trouxe creatives utilizáveis — nunca deixa preso em loading.
+      resolveCreativeGridsEmpty();
+      if(creativesBadge) creativesBadge.textContent = 'sem dados no período';
     }
 
     // ---- demografia: idade, gênero, dispositivo, hora — soma Meta+Google no mesmo rótulo normalizado ----
@@ -1573,19 +1559,20 @@ function buildRegionTableRows(states){
   }).join('');
 }
 function analyticsKpiCard(id, icon, label){
+  // delta nasce vazio (não "0%" fabricado) — só populado se o GA4 devolver um metric.delta real (patchKpiCard).
   return '<div class="kpi-card is-loading" id="kpi-'+id+'">'+
     '<div class="kpi-top">'+
       '<div class="kpi-label-wrap"><span class="kpi-label">'+label+'</span><span class="kpi-source" data-role="source">GA4</span></div>'+
       '<div class="kpi-icon">'+iconSvg(icon)+'</div>'+
     '</div>'+
     '<div class="kpi-value" data-role="value">—</div>'+
-    '<div class="kpi-delta up" data-role="delta">'+iconSvg(ICONS.up)+' 0%<span class="kpi-delta-label">vs. período anterior</span></div>'+
+    '<div class="kpi-delta" data-role="delta"></div>'+
   '</div>';
 }
 function sectionRegional(b){
-  var d = STATE.data[b.id];
-  var states = d.states;
-  var tableRows = buildRegionTableRows(states);
+  // Regional só existe pra marcas com GA4 real (ver hasRegional/GA4_ENABLED_BRANDS) — nasce
+  // tudo em loading, sem estado/cidade fabricados; loadRealCitiesIfAvailable preenche ou mostra
+  // nota explícita de "sem dado nesse período".
   var analyticsRow = GA4_ENABLED_BRANDS[b.id] ? (
     '<div class="section-heading"><div><h2>Analytics do site</h2><p>Usuários e sessões — Google Analytics 4</p></div></div>'+
     '<div class="kpi-grid" style="margin-bottom:20px;">'+
@@ -1600,17 +1587,17 @@ function sectionRegional(b){
 
   return ''+
   analyticsRow+
-  '<div class="section-heading"><div><h2>Alcance por estado</h2><p>Cores = participação no alcance total · verde/vermelho = variação vs. mês anterior</p></div></div>'+
+  '<div class="section-heading"><div><h2>Alcance por estado</h2><p>Cores = participação no alcance total · verde/vermelho = variação vs. período anterior</p></div></div>'+
   '<div class="panel">'+
     '<div class="map-panel-body">'+
-      '<div class="br-map-wrap">'+
+      '<div class="br-map-wrap is-loading">'+
         '<svg viewBox="'+BR_VIEWBOX+'" class="br-map" id="br-map-svg"></svg>'+
         '<div class="map-tooltip" id="map-tooltip"></div>'+
       '</div>'+
-      '<div class="city-list">'+
-        '<div class="subsection-label" style="margin-bottom:2px;">Top cidades <span id="city-source-badge" class="kpi-source" style="margin-left:6px;">mídia (mock)</span></div>'+
+      '<div class="city-list is-loading">'+
+        '<div class="subsection-label" style="margin-bottom:2px;">Top cidades <span id="city-source-badge" class="kpi-source" style="margin-left:6px;">carregando…</span></div>'+
         '<p id="city-source-note" style="font-size:10px;color:var(--text-tertiary);margin-bottom:6px;">Granularidade de cidade em lista — mapa acima é por estado.</p>'+
-        '<div id="city-rows">'+renderCityRows(d.cities, 'reach')+'</div>'+
+        '<div id="city-rows"></div>'+
       '</div>'+
     '</div>'+
     '<div class="map-legend">'+
@@ -1618,19 +1605,27 @@ function sectionRegional(b){
       '<div class="map-legend-row"><span class="map-legend-swatch" style="background:linear-gradient(90deg, rgba(241,84,63,0.25), rgba(241,84,63,0.95));"></span>Queda — intensidade = participação no alcance</div>'+
     '</div>'+
   '</div>'+
-  '<div class="panel"><div class="panel-head"><h3>Ranking regional</h3><span id="region-source-badge" class="kpi-source">mídia (mock)</span></div>'+
-    '<div class="table-wrap" id="region-table-wrap"><table><thead><tr><th>#</th><th>Região</th><th>Alcance</th><th>Crescimento</th></tr></thead><tbody id="region-ranking-tbody">'+tableRows+'</tbody></table></div></div>';
+  '<div class="panel"><div class="panel-head"><h3>Ranking regional</h3><span id="region-source-badge" class="kpi-source">carregando…</span></div>'+
+    '<div class="table-wrap is-loading" id="region-table-wrap"><table><thead><tr><th>#</th><th>Região</th><th>Alcance</th><th>Crescimento</th></tr></thead><tbody id="region-ranking-tbody"></tbody></table>'+
+    '<p id="region-empty-note" class="empty-note">Sem dados reais de região nesse período.</p>'+
+  '</div></div>';
 }
 function mountMap(b){
   var d = STATE.data[b.id];
   var svg = document.getElementById('br-map-svg');
   if(!svg) return;
-  var maxShare = Math.max.apply(null, Object.values(d.states).map(function(s){return s.sharePct;}));
+  // d.states começa vazio ({}) até o GA4 responder — pinta neutro (sem dado), nunca fabrica
+  // participação/crescimento; loadRealCitiesIfAvailable rechama mountMap quando tem dado real.
+  var hasStates = Object.keys(d.states).length > 0;
+  var maxShare = hasStates ? Math.max.apply(null, Object.values(d.states).map(function(s){return s.sharePct;})) : 1;
   var html = '';
   Object.keys(BR_STATES).forEach(function(uf){
     var st = BR_STATES[uf]; var s = d.states[uf];
-    var intensity = 0.25 + (s.sharePct/maxShare)*0.7;
-    var color = s.growth>=0 ? 'rgba(61,220,132,'+intensity.toFixed(2)+')' : 'rgba(241,84,63,'+intensity.toFixed(2)+')';
+    var color = 'var(--overlay-2)';
+    if(s){
+      var intensity = 0.25 + (s.sharePct/maxShare)*0.7;
+      color = s.growth>=0 ? 'rgba(61,220,132,'+intensity.toFixed(2)+')' : 'rgba(241,84,63,'+intensity.toFixed(2)+')';
+    }
     html += '<path class="br-state" d="'+st.d+'" fill="'+color+'" data-uf="'+uf+'"></path>';
   });
   svg.innerHTML = html;
@@ -1640,6 +1635,7 @@ function mountMap(b){
     path.addEventListener('mousemove', function(e){
       var uf = path.getAttribute('data-uf');
       var st = BR_STATES[uf]; var s = d.states[uf];
+      if(!s) return; // sem dado real pra esse estado ainda — sem tooltip fabricado
       var rect = wrap.getBoundingClientRect();
       tooltip.style.display = 'block';
       tooltip.style.left = Math.min(rect.width-170, Math.max(0, e.clientX-rect.left+12)) + 'px';
@@ -1692,36 +1688,34 @@ function areaGradient(ctx, colorHex, h){
   return grad;
 }
 function mountCharts(b){
-  var d = STATE.data[b.id];
   var accent = accentVar('--accent-text');
 
   if(STATE.section==='midia'){
-    var mult = platformMultiplier();
-    var invSlice = periodSlice(d.invSeriesAll).map(function(v){ return v*mult; });
+    // nasce vazio + .is-loading (já aplicado no HTML) — loadRealMediaIfAvailable preenche com
+    // dado real via .update(), ou mostra a nota vazia (#chart-invest-empty-note /
+    // #chart-breakdown-empty-note) se não achar nada nesse período. Nunca número fabricado aqui.
     var ctx = document.getElementById('chart-invest');
     if(ctx){
-      STATE.charts.invest = new Chart(ctx, { type:'line', data:{ labels:periodLabels(), datasets:[{ data:invSlice, borderColor:accent, backgroundColor:areaGradient(ctx,accent,220), fill:true, tension:0.4, pointRadius:0, pointHoverRadius:4, pointHoverBackgroundColor:accent, pointHoverBorderColor:'#0D0D0D', pointHoverBorderWidth:2, borderWidth:2.5 }]}, options: chartDefaults() });
+      STATE.charts.invest = new Chart(ctx, { type:'line', data:{ labels:[], datasets:[{ data:[], borderColor:accent, backgroundColor:areaGradient(ctx,accent,220), fill:true, tension:0.4, pointRadius:0, pointHoverRadius:4, pointHoverBackgroundColor:accent, pointHoverBorderColor:'#0D0D0D', pointHoverBorderWidth:2, borderWidth:2.5 }]}, options: chartDefaults() });
     }
     var ctx2 = document.getElementById('chart-breakdown');
     if(ctx2){
-      var top = (d.campaigns.length?d.campaigns:[{name:'Sem campanhas segmentadas'}]).slice(0,5);
-      var labels = d.campaigns.length ? top.map(function(c){return c.name.length>14?c.name.slice(0,14)+'…':c.name;}) : ['Linha única'];
-      var values = d.campaigns.length ? top.map(function(c){return c.conv*3.4;}) : [invSlice.reduce(function(a,c){return a+c;},0)];
-      STATE.charts.breakdown = new Chart(ctx2, { type:'bar', data:{ labels:labels, datasets:[{ data:values, backgroundColor:accent, borderRadius:6, maxBarThickness:34, hoverBackgroundColor:accent }]}, options: Object.assign(chartDefaults(), {indexAxis:'y', interaction:{ mode:'nearest', axis:'y', intersect:true }}) });
+      STATE.charts.breakdown = new Chart(ctx2, { type:'bar', data:{ labels:[], datasets:[{ data:[], backgroundColor:accent, borderRadius:6, maxBarThickness:34, hoverBackgroundColor:accent }]}, options: Object.assign(chartDefaults(), {indexAxis:'y', interaction:{ mode:'nearest', axis:'y', intersect:true }}) });
     }
   }
 
   if(STATE.section==='social'){
-    var s = d.social;
+    // nasce vazio + .is-loading (já no HTML) — loadRealSocialIfAvailable preenche via .update()
+    // ou mostra a nota vazia correspondente. Nunca número fabricado aqui.
     var ctxF = document.getElementById('chart-followers');
-    if(ctxF) STATE.charts.followers = new Chart(ctxF, { type:'line', data:{ labels:MONTHS, datasets:[{ data:s.followersSeries, borderColor:accent, backgroundColor:areaGradient(ctxF,accent,220), fill:true, tension:0.4, pointRadius:0, pointHoverRadius:4, pointHoverBackgroundColor:accent, pointHoverBorderColor:'#0D0D0D', pointHoverBorderWidth:2, borderWidth:2.5 }]}, options: chartDefaults() });
+    if(ctxF) STATE.charts.followers = new Chart(ctxF, { type:'line', data:{ labels:[], datasets:[{ data:[], borderColor:accent, backgroundColor:areaGradient(ctxF,accent,220), fill:true, tension:0.4, pointRadius:0, pointHoverRadius:4, pointHoverBackgroundColor:accent, pointHoverBorderColor:'#0D0D0D', pointHoverBorderWidth:2, borderWidth:2.5 }]}, options: chartDefaults() });
     var ctxFmt = document.getElementById('chart-format');
-    if(ctxFmt) STATE.charts.format = new Chart(ctxFmt, { type:'bar', data:{ labels:['Reels','Feed','Stories'], datasets:[{ data:[s.byFormat.reels, s.byFormat.feed, s.byFormat.stories], backgroundColor:[accent, accentVar('--chart-muted-1'), accentVar('--chart-muted-2')], borderRadius:8, maxBarThickness:56 }]}, options: chartDefaults() });
+    if(ctxFmt) STATE.charts.format = new Chart(ctxFmt, { type:'bar', data:{ labels:['Reels','Feed','Stories'], datasets:[{ data:[], backgroundColor:[accent, accentVar('--chart-muted-1'), accentVar('--chart-muted-2')], borderRadius:8, maxBarThickness:56 }]}, options: chartDefaults() });
     var ctxRE = document.getElementById('chart-reach-eng');
     if(ctxRE){
-      STATE.charts.reachEng = new Chart(ctxRE, { type:'line', data:{ labels:MONTHS, datasets:[
-        { label:'Alcance', data:s.reachSeries, borderColor:accent, backgroundColor:areaGradient(ctxRE,accent,220), fill:true, tension:0.4, pointRadius:0, pointHoverRadius:4, pointHoverBackgroundColor:accent, pointHoverBorderColor:'#0D0D0D', pointHoverBorderWidth:2, borderWidth:2.5, yAxisID:'y' },
-        { label:'Engajamento', data:s.engagementSeries, borderColor:accentVar('--chart-line-muted'), backgroundColor:'transparent', tension:0.4, pointRadius:0, borderWidth:2, borderDash:[5,4], yAxisID:'y1' }
+      STATE.charts.reachEng = new Chart(ctxRE, { type:'line', data:{ labels:[], datasets:[
+        { label:'Alcance', data:[], borderColor:accent, backgroundColor:areaGradient(ctxRE,accent,220), fill:true, tension:0.4, pointRadius:0, pointHoverRadius:4, pointHoverBackgroundColor:accent, pointHoverBorderColor:'#0D0D0D', pointHoverBorderWidth:2, borderWidth:2.5, yAxisID:'y' },
+        { label:'Engajamento', data:[], borderColor:accentVar('--chart-line-muted'), backgroundColor:'transparent', tension:0.4, pointRadius:0, borderWidth:2, borderDash:[5,4], yAxisID:'y1' }
       ]}, options: Object.assign(chartDefaults(), { scales: Object.assign(chartDefaults().scales, { y1:{ position:'right', grid:{display:false}, ticks:{color:accentVar('--text-tertiary'), font:{size:10,family:'Inter'}}, border:{display:false} } })}) });
     }
   }
@@ -1750,7 +1744,7 @@ function toggleTheme(){
    INIT
    ============================================================================ */
 document.body.setAttribute('data-brand', STATE.brand);
-STATE.data[STATE.brand] = buildBrandData(BRANDS[STATE.brand]);
+STATE.data[STATE.brand] = emptyBrandData();
 renderBrandDock();
 initDockMagnify();
 updateSidebarLogo(BRANDS[STATE.brand]);
