@@ -19,7 +19,7 @@ const BRAND_EXCLUDE_PATTERNS = {
   tiojoao: ['armazem'],
 };
 
-const API_VERSION = 'v22';
+const API_VERSION = 'v24';
 
 function num(v) { return typeof v === 'number' ? v : parseFloat(v || '0') || 0; }
 function normalize(s) {
